@@ -13,7 +13,11 @@ export function asyncRoute(handler) {
 }
 export function errorHandler(error, _request, response, _next) {
     const status = error instanceof HttpError ? error.status : 500;
-    const message = error instanceof Error && status < 500 ? error.message : "Something went wrong. Please try again.";
+    const message = error instanceof HttpError
+        ? error.message
+        : error instanceof Error && status < 500
+            ? error.message
+            : "Something went wrong. Please try again.";
     if (status >= 500) {
         console.error(error);
     }

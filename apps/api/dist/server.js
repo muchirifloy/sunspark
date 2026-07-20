@@ -468,6 +468,18 @@ function reportWindow(date) {
 app.get("/health", (_request, response) => {
     response.json({ ok: true, service: "sunspark-api" });
 });
+app.get("/health/config", (_request, response) => {
+    response.json({
+        ok: true,
+        service: "sunspark-api",
+        configured: {
+            database: Boolean(env("DATABASE_URL")),
+            adminApiToken: Boolean(adminApiToken),
+            frontendOrigin: allowedOrigins.length > 0,
+            mailer: Boolean(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD"))
+        }
+    });
+});
 app.get("/settings", asyncRoute(async (_request, response) => {
     const rows = await query("SELECT * FROM site_settings WHERE id = 'default' LIMIT 1");
     response.json(rows[0] ?? null);
