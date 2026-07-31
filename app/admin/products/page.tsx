@@ -22,6 +22,7 @@ type AdminProductsResponse = {
   total: number;
   page: number;
   perPage: number;
+  unavailable?: boolean;
 };
 
 export default async function AdminProductsPage({
@@ -60,6 +61,11 @@ export default async function AdminProductsPage({
       }
     >
         {feedback ? <p className={params?.error ? "admin-feedback error" : "admin-feedback success"} role="status">{feedback}</p> : null}
+        {productResult.unavailable ? (
+          <p className="admin-feedback error" role="alert">
+            Product records could not load from the backend right now. Filters and actions are still available; retry the list in a moment.
+          </p>
+        ) : null}
         <form action="/admin/products" className="admin-filter">
           <input name="q" defaultValue={params?.q ?? ""} placeholder="Search product, brand, description..." />
           <select name="category" defaultValue={params?.category ?? ""}>
@@ -110,7 +116,7 @@ export default async function AdminProductsPage({
               </details>
             </div>
           ))}
-          {!productResult.total ? <p className="empty-state">No products match this search.</p> : null}
+          {!productResult.total && !productResult.unavailable ? <p className="empty-state">No products match this search.</p> : null}
         </div>
         {productResult.total > perPage ? (
           <nav className="pagination" aria-label="Product pages">
@@ -148,7 +154,7 @@ async function getProducts(input: { q?: string; category?: string; status?: stri
       perPage: input.perPage
     })}`);
   } catch {
-    return { products: [], total: 0, page: input.page, perPage: input.perPage };
+    return { products: [], total: 0, page: input.page, perPage: input.perPage, unavailable: true };
   }
 }
 

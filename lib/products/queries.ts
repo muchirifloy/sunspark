@@ -1,7 +1,7 @@
 import { apiFetch, toQueryString } from "@/lib/api/client";
 import type { Campaign, Category, Product } from "@/lib/types";
 
-const queryTimeoutMs = 2500;
+const queryTimeoutMs = 9000;
 
 function storefrontCategoryRank(slug: string) {
   const order = ["electricals", "electronics", "solar"];
@@ -23,19 +23,43 @@ async function withFallback<T>(query: Promise<T>, fallback: T): Promise<T> {
 }
 
 export async function getHomeData() {
-  const data = await withFallback(
+  const [data, campaigns] = await Promise.all([
+    withFallback(
     apiFetch<{ categories: Category[]; categorySections: Category[]; products: Product[]; brands: string[] }>("/home"),
-    { categories: [], categorySections: [], products: [], brands: [] }
+      null
+    ),
+    withFallback(apiFetch<Campaign[]>("/campaigns"), [])
+  ]);
+
+  if (data?.categories.length || data?.categorySections.length || data?.products.length) {
+    const products = data.products.length
+      ? data.products
+      : data.categorySections.flatMap((category) => category.products).slice(0, 24);
+
+    return {
+      campaigns,
+      categories: data.categories.sort((a, b) => storefrontCategoryRank(a.slug) - storefrontCategoryRank(b.slug)),
+      products,
+      categorySections: data.categorySections.sort((a, b) => storefrontCategoryRank(a.slug) - storefrontCategoryRank(b.slug)),
+      brands: data.brands
+    };
+  }
+
+  const categories = await getStoreCategories();
+  const categorySections = await Promise.all(
+    categories.map(async (category) => ({
+      ...category,
+      products: await getStoreProducts({ category: category.slug, limit: 24 })
+    }))
   );
-  const campaigns = await withFallback(apiFetch<Campaign[]>("/campaigns"), []);
-  const products = data.products.length ? data.products : await getStoreProducts({});
+  const products = categorySections.flatMap((category) => category.products).slice(0, 24);
 
   return {
     campaigns,
-    categories: data.categories.sort((a, b) => storefrontCategoryRank(a.slug) - storefrontCategoryRank(b.slug)),
+    categories,
     products,
-    categorySections: data.categorySections.sort((a, b) => storefrontCategoryRank(a.slug) - storefrontCategoryRank(b.slug)),
-    brands: data.brands
+    categorySections: categorySections.filter((category) => category.products.length),
+    brands: []
   };
 }
 
