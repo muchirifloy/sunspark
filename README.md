@@ -68,9 +68,15 @@ Product images upload to:
 public/uploads/products
 ```
 
-Each uploaded image must be JPEG, PNG, or WebP and below 2MB. SQL stores only image URLs, not binary image data.
+Each uploaded image must be JPEG, PNG, or WebP and below 2MB. Uploads are optimized before saving only when the same format produces a smaller file; failed or larger optimizations retain the original. SQL stores only image URLs, not binary image data.
 
 On hosting, make sure the uploads directory is writable and backed up. For larger production scale, move uploads to object storage and keep the same URL-based database design.
+
+To optimize existing product images in small, safe batches, run this from `apps/api` (default: 20, valid range: 1-100). It keeps private originals in `apps/api/private-backups/product-images` and atomically replaces only smaller files, without changing image URLs. Animated images are retained unchanged:
+
+```bash
+npm run images:optimize-existing -- --limit=20
+```
 
 ## Split Deployment
 

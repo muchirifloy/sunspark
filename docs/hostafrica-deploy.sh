@@ -10,7 +10,6 @@ APP_DIR="${APP_DIR:-$HOME/sunsparkbackend}"
 REPO_URL="${REPO_URL:-https://github.com/muchirifloy/sunspark.git}"
 BRANCH="${BRANCH:-main}"
 NODE_ENV_DIR="${NODE_ENV_DIR:-}"
-INSTALL_DEPS="${INSTALL_DEPS:-0}"
 RUN_MIGRATE="${RUN_MIGRATE:-1}"
 RUN_SEED="${RUN_SEED:-0}"
 RUN_LEGACY_IMPORT="${RUN_LEGACY_IMPORT:-0}"
@@ -84,11 +83,14 @@ cd "$API_ROOT"
 
 link_cloudlinux_node_modules "$NODE_ENV_DIR"
 
-if [ "$INSTALL_DEPS" = "1" ]; then
-  echo "==> Installing backend dependencies"
+LOCKFILE_MARKER="$API_ROOT/.package-lock.sha256"
+LOCKFILE_HASH="$(sha256sum package-lock.json | awk '{print $1}')"
+if [ ! -f "$LOCKFILE_MARKER" ] || [ "$(cat "$LOCKFILE_MARKER")" != "$LOCKFILE_HASH" ]; then
+  echo "==> Installing backend dependencies for updated package lock"
   npm install --include=dev --no-audit --no-fund --legacy-peer-deps --prefer-offline --maxsockets=1
+  printf '%s\n' "$LOCKFILE_HASH" > "$LOCKFILE_MARKER"
 else
-  echo "==> Skipping npm install. Use cPanel Run NPM Install, or rerun with INSTALL_DEPS=1."
+  echo "==> Backend dependencies already match package lock"
 fi
 
 if [ "$RUN_MIGRATE" = "1" ]; then

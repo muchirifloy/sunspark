@@ -10,6 +10,7 @@ import { execute, query, transaction } from "./db.js";
 import { sendEmail } from "./email.js";
 import { env } from "./env.js";
 import { id } from "./id.js";
+import { optimizeUploadedImage } from "./image-optimization.js";
 import { HttpError, asyncRoute, errorHandler } from "./response.js";
 const app = express();
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -247,6 +248,7 @@ function mapCampaign(row) {
 }
 const uploadContentTypes = new Map([
     ["image/jpeg", "jpg"],
+    ["image/jpg", "jpg"],
     ["image/png", "png"],
     ["image/webp", "webp"]
 ]);
@@ -892,8 +894,9 @@ app.post("/admin/uploads", asyncRoute(async (request, response) => {
         if (!buffer.byteLength || buffer.byteLength > 2 * 1024 * 1024) {
             throw new HttpError(400, "Each image must be smaller than 2 MB.");
         }
+        const optimized = await optimizeUploadedImage(buffer, file.type.toLowerCase());
         const filename = `${crypto.randomUUID()}-${safeUploadName(file.filename).replace(/\.[a-z0-9]+$/i, "")}.${extension}`;
-        await writeFile(path.join(targetDir, filename), buffer, { flag: "wx" });
+        await writeFile(path.join(targetDir, filename), optimized, { flag: "wx" });
         images.push({
             url: `/uploads/${input.folder}/${filename}`,
             alt: input.name

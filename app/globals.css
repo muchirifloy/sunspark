@@ -2096,6 +2096,7 @@ summary:focus-visible {
 }
 
 .admin-shell.narrow {
+  width: 100%;
   max-width: 860px;
 }
 
@@ -2735,8 +2736,7 @@ summary:focus-visible {
 }
 
 .product-editor-side {
-  position: sticky;
-  top: 18px;
+  position: static;
 }
 
 .editor-card {
@@ -2852,7 +2852,10 @@ summary:focus-visible {
 }
 
 .product-options-card {
+  grid-column: 1 / -1;
   gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .option-editor-grid {
@@ -2860,6 +2863,11 @@ summary:focus-visible {
   grid-template-columns: 72px minmax(120px, 1.1fr) 112px 92px 92px 92px 78px 76px;
   gap: 8px;
   align-items: center;
+  min-width: 780px;
+}
+
+.option-editor-grid > * {
+  min-width: 0;
 }
 
 .option-editor-head {
@@ -3906,6 +3914,7 @@ summary:focus-visible {
 
   .option-editor-grid {
     grid-template-columns: 1fr 1fr;
+    min-width: 0;
   }
 
   .option-editor-head {

@@ -2,7 +2,7 @@ import "server-only";
 
 import { apiFetch } from "@/lib/api/client";
 
-const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
 const maxBytes = 2 * 1024 * 1024;
 
 export type SavedProductImage = {

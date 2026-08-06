@@ -9,13 +9,15 @@
     "migrate": "node dist/migrate.js",
     "seed": "node dist/seed.js",
     "import:legacy": "node dist/import-legacy.js",
-    "import:products": "node dist/import-products.js"
+    "import:products": "node dist/import-products.js",
+    "images:optimize-existing": "node scripts/optimize-existing-product-images.mjs"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",
     "cors": "2.8.5",
     "express": "4.18.3",
     "mariadb": "3.5.3",
+    "sharp": "0.35.3",
     "zod": "4.3.6"
   },
   "devDependencies": {

@@ -10,6 +10,7 @@ coverage/
 playwright-report/
 test-results/
 public/uploads/
+apps/api/private-backups/
 .vercel/
 exports/
 outputs/

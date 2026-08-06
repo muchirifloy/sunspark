@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
     }
   },
   images: {
+    // Product images are optimized before they are stored by the backend. Serve
+    // those files directly so storefront availability does not depend on the
+    // Vercel Image Optimization quota.
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",

@@ -7,14 +7,14 @@ cd ~/sunsparkbackend
 bash docs/hostafrica-deploy.sh
 ```
 
-First deploy or dependency changes:
+On the first deploy and whenever `apps/api/package-lock.json` changes, the deployment script runs `npm install` before restarting the backend. No manual dependency-install flag is needed.
 
 ```bash
 cd ~/sunsparkbackend
-INSTALL_DEPS=1 RUN_SEED=1 bash docs/hostafrica-deploy.sh
+RUN_SEED=1 bash docs/hostafrica-deploy.sh
 ```
 
-On CloudLinux, if `INSTALL_DEPS=1` still refuses to install, use the cPanel Node.js screen's **Run NPM Install** button for the `sunsparkbackend/apps/api` app, then run:
+On CloudLinux, if the dependency install fails, use the cPanel Node.js screen's **Run NPM Install** button for the `sunsparkbackend/apps/api` app, then run:
 
 ```bash
 cd ~/sunsparkbackend
