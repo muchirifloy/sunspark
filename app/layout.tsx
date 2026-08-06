@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { CampaignModal } from "@/components/site/campaign-modal";
@@ -7,6 +8,8 @@ import { apiFetch } from "@/lib/api/client";
 import { siteConfig } from "@/lib/site-config";
 import type { Campaign } from "@/lib/types";
 import "./globals.css";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
@@ -71,7 +74,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     sameAs: [siteConfig.facebookUrl]
   };
   return (
-    <html lang="en">
+    <html className={inter.variable} lang="en">
       <body>
         <script
           dangerouslySetInnerHTML={{ __html: JSON.stringify(businessSchema) }}

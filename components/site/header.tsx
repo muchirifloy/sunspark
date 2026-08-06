@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountMenu } from "@/components/site/account-menu";
+import { CartStatusLink } from "@/components/site/cart-status-link";
 import { HeaderMenu } from "@/components/site/header-menu";
 import { getCart } from "@/lib/cart/cart-service";
 import { getStoreCategories } from "@/lib/products/queries";
@@ -45,15 +46,7 @@ export async function Header() {
             <button aria-label="Search products" type="submit">Search</button>
           </form>
           <nav aria-label="Shop actions" className="header-actions">
-            <Link aria-label={`${cartCount} items in cart`} className="icon-link cart-link" href="/cart">
-              <span aria-hidden="true">
-                <svg viewBox="0 0 24 24" focusable="false">
-                  <path d="M7 18.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm10 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM4.2 4H2V2h3.8l1 4H21l-2 8.5H8.2L7.7 16H19v2H6.1L3.9 6 4.2 4Zm3.1 4 .9 4.5h9.2L18.5 8H7.3Z" />
-                </svg>
-              </span>
-              <strong>Cart</strong>
-              <em aria-hidden="true">{cartCount}</em>
-            </Link>
+            <CartStatusLink initialCount={cartCount} />
             <Link aria-label="Wishlist" className="icon-link wishlist-link" href="/wishlist">
               <span aria-hidden="true">
                 <svg viewBox="0 0 24 24" focusable="false">

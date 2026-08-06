@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execute, pool } from "./db.js";
+import { execute, pool, query } from "./db.js";
 const here = dirname(fileURLToPath(import.meta.url));
 const migrationPath = resolve(here, "../sql/001_init.sql");
 function splitStatements(sql) {
@@ -13,10 +13,90 @@ function splitStatements(sql) {
 async function main() {
     const sql = readFileSync(migrationPath, "utf8");
     for (const statement of splitStatements(sql)) {
-        await execute(statement);
+        await executeSchemaStatement(statement);
     }
+    await ensurePerformanceIndexes();
+    await mergeLegacyProductDescriptions();
     await backfillDefaultProductOptions();
     console.log("Database schema is ready.");
+}
+const performanceIndexes = [
+    { table: "users", name: "users_role_created_idx", columns: "role, created_at" },
+    { table: "orders", name: "orders_status_created_idx", columns: "status, created_at" },
+    { table: "orders", name: "orders_payment_created_idx", columns: "payment_status, created_at" },
+    { table: "products", name: "products_active_category_updated_idx", columns: "is_active, category_id, updated_at" },
+    { table: "products", name: "products_active_stock_idx", columns: "is_active, stock_quantity" },
+    { table: "product_images", name: "product_images_primary_sort_idx", columns: "product_id, is_primary, sort_order" },
+    { table: "order_items", name: "order_items_product_order_idx", columns: "product_id, order_id" },
+];
+async function ensurePerformanceIndexes() {
+    for (const index of performanceIndexes) {
+        const existing = await query(`SELECT COUNT(*) AS count
+       FROM information_schema.statistics
+       WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`, [index.table, index.name]);
+        if (Number(existing[0]?.count ?? 0) > 0)
+            continue;
+        await execute(`ALTER TABLE \`${index.table}\` ADD INDEX \`${index.name}\` (${index.columns})`);
+    }
+}
+async function executeSchemaStatement(statement) {
+    const conditionalColumn = statement.match(/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD COLUMN IF NOT EXISTS\s+`?([a-zA-Z0-9_]+)`?/i);
+    if (!conditionalColumn) {
+        await execute(statement);
+        return;
+    }
+    const [, tableName, columnName] = conditionalColumn;
+    const existing = await query(`SELECT COUNT(*) AS count
+     FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`, [tableName, columnName]);
+    if (Number(existing[0]?.count ?? 0) > 0)
+        return;
+    await execute(statement.replace(/ADD COLUMN IF NOT EXISTS/i, "ADD COLUMN"));
+}
+function escapeHtml(value) {
+    return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+function asRichParagraphs(value) {
+    const trimmed = value.trim();
+    if (!trimmed)
+        return "";
+    if (/<[a-z][\s\S]*>/i.test(trimmed))
+        return trimmed;
+    return trimmed
+        .split(/\n{2,}/)
+        .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+        .join("");
+}
+function plainDescription(value) {
+    return value
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLocaleLowerCase();
+}
+async function mergeLegacyProductDescriptions() {
+    const products = await query(`SELECT id, short_description, description
+     FROM products
+     WHERE short_description IS NOT NULL AND TRIM(short_description) <> ''`);
+    for (const product of products) {
+        const shortText = product.short_description?.trim() ?? "";
+        const currentDescription = product.description?.trim() ?? "";
+        const merged = plainDescription(currentDescription).includes(plainDescription(shortText))
+            ? asRichParagraphs(currentDescription)
+            : `${asRichParagraphs(shortText)}${asRichParagraphs(currentDescription)}`;
+        await execute("UPDATE products SET description = ?, short_description = NULL WHERE id = ?", [merged || null, product.id]);
+    }
 }
 async function backfillDefaultProductOptions() {
     await execute(`INSERT INTO product_options

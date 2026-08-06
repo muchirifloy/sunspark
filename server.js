@@ -1,7 +1,9 @@
 const http = require("http");
 const next = require("next");
 
-const dev = process.env.NODE_ENV !== "production";
+// `npm start` is the production entrypoint on cPanel/HostAfrica. Some hosting
+// panels do not inject NODE_ENV, so only opt into development explicitly.
+const dev = process.env.NODE_ENV === "development";
 const hostname = process.env.HOSTNAME || process.env.HOST || "0.0.0.0";
 const port = Number(process.env.PORT || 3000);
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { PendingButton } from "@/components/ui/pending-button";
+import { useRouter } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
+import type { ActionResult } from "@/lib/actions/result";
 import type { ProductOption } from "@/lib/types";
 
 type SaleProduct = {
@@ -25,7 +26,7 @@ export function WalkInSaleForm({
   products,
   submitLabel = "Complete sale"
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<ActionResult | void>;
   initialCustomer?: {
     name?: string | null;
     email?: string | null;
@@ -36,6 +37,8 @@ export function WalkInSaleForm({
   products: SaleProduct[];
   submitLabel?: string;
 }) {
+  const router = useRouter();
+  const [isSubmitting, startTransition] = useTransition();
   const [lines, setLines] = useState<SaleLine[]>(initialLines);
   const choices = useMemo(() => products.flatMap((product) => {
     const options = product.options?.length ? product.options : [{
@@ -54,15 +57,17 @@ export function WalkInSaleForm({
     }];
     return options.map((option) => ({ product, option, key: `${product.id}::${option.id}` }));
   }), [products]);
-  const [selectedKey, setSelectedKey] = useState(choices[0]?.key ?? "");
   const [productQuery, setProductQuery] = useState("");
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [formError, setFormError] = useState("");
   const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const choiceByKey = useMemo(() => new Map(choices.map((choice) => [choice.key, choice])), [choices]);
   const matchingChoices = useMemo(() => {
     const query = productQuery.trim().toLowerCase();
-    if (!query) return choices;
-    return choices.filter(({ product, option }) => `${product.name} ${option.label}`.toLowerCase().includes(query));
+    const matches = query
+      ? choices.filter(({ product, option }) => `${product.name} ${option.label}`.toLowerCase().includes(query))
+      : choices;
+    return matches.slice(0, 10);
   }, [choices, productQuery]);
   const total = lines.reduce((sum, line) => {
     const product = productById.get(line.productId);
@@ -70,14 +75,8 @@ export function WalkInSaleForm({
     return sum + (option?.priceCents ?? product?.priceCents ?? 0) * line.quantity;
   }, 0);
 
-  useEffect(() => {
-    if (!matchingChoices.some((choice) => choice.key === selectedKey)) {
-      setSelectedKey(matchingChoices[0]?.key ?? "");
-    }
-  }, [matchingChoices, selectedKey]);
-
-  function addLine() {
-    const choice = choiceByKey.get(selectedKey);
+  function addLine(choiceKey: string) {
+    const choice = choiceByKey.get(choiceKey);
     if (!choice) return;
     const { product, option } = choice;
     setLines((current) => {
@@ -87,14 +86,29 @@ export function WalkInSaleForm({
       }
       return [...current, { productId: product.id, productOptionId: option.id || null, quantity: 1 }];
     });
+    setProductQuery("");
+    setIsPickerOpen(false);
+    setFormError("");
   }
 
   return (
-    <form action={action} className="walk-in-sale-form" onSubmit={(event) => {
+    <form className="walk-in-sale-form" onSubmit={(event) => {
+      event.preventDefault();
       if (!lines.length) {
-        event.preventDefault();
         setFormError("Add at least one product before completing the sale.");
+        return;
       }
+      const formData = new FormData(event.currentTarget);
+      setFormError("");
+      startTransition(async () => {
+        const result = await action(formData);
+        if (!result) return;
+        if (!result.ok) {
+          setFormError(result.message);
+          return;
+        }
+        if (result.redirectTo) router.push(result.redirectTo);
+      });
     }}>
       <section className="sale-panel">
         <div className="sale-panel-heading"><h2>Customer</h2><p>Capture the details needed for the receipt.</p></div>
@@ -109,19 +123,47 @@ export function WalkInSaleForm({
       </section>
       <section className="sale-panel">
         <div className="sale-panel-heading"><h2>Products</h2><p>Only products with stock are shown.</p></div>
-        <div className="sale-product-picker">
+        <div
+          className="sale-product-picker sale-product-combobox"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsPickerOpen(false);
+          }}
+        >
           <label className="sale-search-field">
             <span>Find product</span>
-            <input aria-label="Search walk-in products" onChange={(event) => setProductQuery(event.target.value)} placeholder="Search by product name" type="search" value={productQuery} />
+            <input
+              aria-autocomplete="list"
+              aria-controls="walk-in-product-suggestions"
+              aria-expanded={isPickerOpen}
+              aria-label="Search walk-in products"
+              autoComplete="off"
+              onChange={(event) => { setProductQuery(event.target.value); setIsPickerOpen(true); }}
+              onFocus={() => setIsPickerOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && isPickerOpen && matchingChoices[0]) {
+                  event.preventDefault();
+                  addLine(matchingChoices[0].key);
+                }
+                if (event.key === "Escape") setIsPickerOpen(false);
+              }}
+              placeholder="Type a product name..."
+              role="combobox"
+              type="search"
+              value={productQuery}
+            />
           </label>
-          <label className="sale-select-field">
-            <span>Select product</span>
-            <select aria-label="Select product" onChange={(event) => setSelectedKey(event.target.value)} value={selectedKey}>
-              {matchingChoices.map(({ product, option, key }) => <option key={key} value={key}>{product.name} - {option.label} ({product.stockQuantity} available)</option>)}
-              {!matchingChoices.length ? <option value="">No matching products</option> : null}
-            </select>
-          </label>
-          <button className="secondary-btn" onClick={addLine} type="button">Add item</button>
+          {isPickerOpen ? (
+            <div className="sale-product-suggestions" id="walk-in-product-suggestions" role="listbox">
+              {matchingChoices.map(({ product, option, key }) => (
+                <button aria-selected="false" key={key} onClick={() => addLine(key)} role="option" type="button">
+                  <span><strong>{product.name}</strong><small>{option.label} · {money(option.priceCents)}</small></span>
+                  <em>{product.stockQuantity} available</em>
+                  <b>Add</b>
+                </button>
+              ))}
+              {!matchingChoices.length ? <p>No matching products.</p> : null}
+            </div>
+          ) : null}
         </div>
         <div className="sale-lines" aria-live="polite">
           {lines.map((line) => {
@@ -136,14 +178,14 @@ export function WalkInSaleForm({
               <span><strong>{product.name}</strong><small>{option?.label ? `${option.label} · ` : ""}{money(unitPrice)} each</small></span>
               <input aria-label={`${product.name} quantity`} max={product.stockQuantity} min="1" name="quantity" onChange={(event) => setLines((current) => current.map((item) => item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? "") ? { ...item, quantity: Math.max(1, Math.min(product.stockQuantity, Number(event.target.value) || 1)) } : item))} type="number" value={line.quantity} />
               <strong>{money(unitPrice * line.quantity)}</strong>
-              <button aria-label={`Remove ${product.name}`} className="remove-line" onClick={() => setLines((current) => current.filter((item) => !(item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? ""))))} type="button">Remove</button>
+              <button aria-label={`Delete ${product.name} from sale`} className="remove-line" onClick={() => setLines((current) => current.filter((item) => !(item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? ""))))} type="button">Delete</button>
             </div>;
           })}
           {!lines.length ? <p className="empty-state">No products added to this sale.</p> : null}
         </div>
       </section>
       {formError ? <p className="admin-feedback error" role="alert">{formError}</p> : null}
-      <div className="sale-total"><span>Total</span><strong>{money(total)}</strong><PendingButton disabled={!lines.length} pendingText={`${submitLabel.replace(/^Create /, "Creating ").replace(/^Complete /, "Completing ")}...`}>{submitLabel}</PendingButton></div>
+      <div className="sale-total"><span>Total</span><strong>{money(total)}</strong><button aria-busy={isSubmitting} className="primary-btn" disabled={!lines.length || isSubmitting} type="submit">{isSubmitting ? `${submitLabel.replace(/^Create /, "Creating ").replace(/^Complete /, "Completing ")}...` : submitLabel}</button></div>
     </form>
   );
 }

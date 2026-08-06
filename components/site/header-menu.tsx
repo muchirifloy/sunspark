@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { cartCountEvent } from "@/components/site/cart-events";
 
 type HeaderMenuCategory = {
   name: string;
@@ -24,6 +25,7 @@ export function HeaderMenu({
   session: HeaderMenuSession;
 }) {
   const [open, setOpen] = useState(false);
+  const [currentCartCount, setCurrentCartCount] = useState(cartCount);
 
   function closeMenu() {
     setOpen(false);
@@ -38,6 +40,12 @@ export function HeaderMenu({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open]);
+
+  useEffect(() => {
+    const updateCount = (event: Event) => setCurrentCartCount((event as CustomEvent<number>).detail);
+    window.addEventListener(cartCountEvent, updateCount);
+    return () => window.removeEventListener(cartCountEvent, updateCount);
+  }, []);
 
   return (
     <>
@@ -68,7 +76,7 @@ export function HeaderMenu({
                   {category.name}
                 </Link>
               ))}
-              <Link className="side-action-link" href="/cart#top" onClick={closeMenu}>Cart <span>{cartCount}</span></Link>
+              <Link className="side-action-link" href="/cart#top" onClick={closeMenu}>Cart <span>{currentCartCount}</span></Link>
               <Link className="side-action-link" href="/wishlist#top" onClick={closeMenu}>Wishlist</Link>
               <Link className="side-action-link" href="/account#top" onClick={closeMenu}>My Account</Link>
               {session ? (

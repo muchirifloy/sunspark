@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -6,6 +7,7 @@ import { apiFetch, toQueryString } from "@/lib/api/client";
 import { productUrl } from "@/lib/merchant/feed";
 import { formatMoney } from "@/lib/money";
 import { deleteProductAction, hideProductAction } from "./actions";
+import { getPrimaryImage, publicImageUrl } from "@/lib/products/images";
 import type { Category, Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -92,30 +94,58 @@ export default async function AdminProductsPage({
             <span>Status</span>
             <span></span>
           </div>
-          {products.map((product) => (
-            <div className="admin-table-row" key={product.id}>
-              <strong>{product.name}</strong>
-              <span>{product.category.name}</span>
-              <span>{formatMoney(product.priceCents)}</span>
-              <span>{product.stockQuantity}</span>
-              <span className={product.isActive ? "status-pill active" : "status-pill"}>{product.isActive ? "Active" : "Hidden"}</span>
-              <details className="row-action-menu">
-                <summary>Actions</summary>
-                <div>
-                  <a href={productUrl(product.slug)} rel="noreferrer" target="_blank">Merchant link</a>
-                  {canEditProducts ? <Link href={`/admin/products/${product.id}/edit`}>Edit product</Link> : null}
-                  {canEditProducts && product.isActive ? (
-                    <form action={hideProductAction.bind(null, product.id)}>
-                      <button type="submit" title="Hide from customers without deleting order history">Hide product</button>
-                    </form>
-                  ) : null}
-                  {canEditProducts ? <form action={deleteProductAction.bind(null, product.id)}>
-                    <button className="danger-btn" type="submit">Delete product</button>
-                  </form> : null}
-                </div>
-              </details>
-            </div>
-          ))}
+          {products.map((product) => {
+            const thumbnail = getPrimaryImage(product.images);
+            const productHref = canEditProducts
+              ? `/admin/products/${product.id}/edit`
+              : `/product/${product.slug}`;
+
+            return (
+              <div className="admin-table-row" key={product.id}>
+                <Link className="admin-product-link" href={productHref}>
+                  <span className="admin-product-thumbnail">
+                    {thumbnail ? (
+                      <Image
+                        alt=""
+                        height={44}
+                        sizes="44px"
+                        src={publicImageUrl(thumbnail.url)}
+                        width={44}
+                      />
+                    ) : (
+                      <span aria-hidden="true">—</span>
+                    )}
+                  </span>
+                  <strong>{product.name}</strong>
+                </Link>
+                <span>{product.category.name}</span>
+                <span>{formatMoney(product.priceCents)}</span>
+              <span className={`stock-pill ${product.stockQuantity <= 0 ? "out" : product.stockQuantity <= product.lowStockThreshold ? "low" : "healthy"}`}>
+                {product.stockQuantity <= 0
+                  ? "Out of stock"
+                  : product.stockQuantity <= product.lowStockThreshold
+                    ? `${product.stockQuantity} · Low`
+                    : `${product.stockQuantity} · In stock`}
+              </span>
+                <span className={product.isActive ? "status-pill active" : "status-pill"}>{product.isActive ? "Active" : "Hidden"}</span>
+                <details className="row-action-menu">
+                  <summary>Actions</summary>
+                  <div>
+                    <a href={productUrl(product.slug)} rel="noreferrer" target="_blank">Merchant link</a>
+                    {canEditProducts ? <Link href={`/admin/products/${product.id}/edit`}>Edit product</Link> : null}
+                    {canEditProducts && product.isActive ? (
+                      <form action={hideProductAction.bind(null, product.id)}>
+                        <button type="submit" title="Hide from customers without deleting order history">Hide product</button>
+                      </form>
+                    ) : null}
+                    {canEditProducts ? <form action={deleteProductAction.bind(null, product.id)}>
+                      <button className="danger-btn" type="submit">Delete product</button>
+                    </form> : null}
+                  </div>
+                </details>
+              </div>
+            );
+          })}
           {!productResult.total && !productResult.unavailable ? <p className="empty-state">No products match this search.</p> : null}
         </div>
         {productResult.total > perPage ? (

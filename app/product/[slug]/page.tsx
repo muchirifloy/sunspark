@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { addSelectedToCartAndRedirectAction } from "@/app/cart/actions";
+import { addSelectedToCartAction } from "@/app/cart/actions";
 import { addWishlistAction } from "@/app/wishlist/actions";
 import { ProductCard } from "@/components/site/product-card";
 import { ProductGallery } from "@/components/site/product-gallery";
@@ -11,6 +11,7 @@ import { PendingButton } from "@/components/ui/pending-button";
 import { absoluteUrl, productUrl } from "@/lib/merchant/feed";
 import { getPrimaryImage, publicImageUrl } from "@/lib/products/images";
 import { getProductBySlugStrict, getProductCompanions, getRelatedProducts } from "@/lib/products/queries";
+import { richTextToPlainText, sanitizeRichText } from "@/lib/products/rich-text";
 import { siteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
   const image = getPrimaryImage(product.images);
   const url = productUrl(product.slug);
-  const shareImageUrl = `${url}/opengraph-image`;
+  const shareImageUrl = `${url}/opengraph-image?v=2`;
   const description =
-    product.seoDescription || product.shortDescription || product.description || `Buy ${product.name} from ${siteConfig.name}.`;
+    product.seoDescription || product.shortDescription || richTextToPlainText(product.description) || `Buy ${product.name} from ${siteConfig.name}.`;
 
   return {
     title: product.seoTitle || product.name,
@@ -81,7 +82,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       name: product.brand || siteConfig.name
     },
     category: product.category.name,
-    description: product.description || product.shortDescription || product.name,
+    description: richTextToPlainText(product.description) || product.shortDescription || product.name,
     image: product.images.map((image) => absoluteUrl(publicImageUrl(image.url))),
     offers: {
       "@type": "Offer",
@@ -109,9 +110,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <p className={product.stockQuantity > 0 ? "stock ok" : "stock out"}>
               {product.stockQuantity > 0 ? `${product.stockQuantity} available` : "Out of stock"}
             </p>
-            {product.shortDescription ? <p>{product.shortDescription}</p> : null}
             <div className="hero-actions">
-              <ProductOptionPurchase action={addSelectedToCartAndRedirectAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} options={product.options} />
+              <ProductOptionPurchase action={addSelectedToCartAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} options={product.options} />
               <form action={addWishlistAction.bind(null, product.slug)}>
                 <PendingButton className="secondary-btn" pendingText="Saving...">Wishlist</PendingButton>
               </form>
@@ -127,7 +127,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <section className="section soft-section">
         <div className="container product-description">
           <h2>Product Details</h2>
-          <p>{product.description ?? "Contact Sunspark for specifications, availability, and installation guidance."}</p>
+          {product.description ? (
+            <div className="product-rich-description" dangerouslySetInnerHTML={{ __html: sanitizeRichText(product.description) }} />
+          ) : (
+            <p>Contact Sunspark for specifications, availability, and installation guidance.</p>
+          )}
         </div>
       </section>
       {related.length ? (

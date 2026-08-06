@@ -1,7 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { addToCartAction } from "@/app/cart/actions";
-import { PendingButton } from "@/components/ui/pending-button";
+import { AddToCartButton } from "@/components/site/add-to-cart-button";
+import { ProductCardSlideshow } from "@/components/site/product-card-slideshow";
 import { formatMoney } from "@/lib/money";
 import { getPrimaryImage, publicImageUrl } from "@/lib/products/images";
 import { sellingUnitLabel } from "@/lib/products/units";
@@ -30,23 +31,17 @@ export type ProductCardProduct = {
 
 export function ProductCard({ product }: { product: ProductCardProduct }) {
   const image = getPrimaryImage(product.images);
+  const orderedImages = image
+    ? [image, ...product.images.filter((item) => item !== image)]
+    : product.images;
 
   return (
     <article className="product-card">
       <Link className="product-image" href={`/product/${product.slug}`}>
         {product.images.length > 1 ? (
-          <span className="product-image-stack" aria-hidden="true">
-            {product.images.map((item, index) => (
-              <Image
-                alt=""
-                fill
-                key={item.url}
-                sizes="(max-width: 700px) 50vw, 25vw"
-                src={publicImageUrl(item.url)}
-                style={{ animationDelay: `${index * 2.6}s` }}
-              />
-            ))}
-          </span>
+          <ProductCardSlideshow
+            images={orderedImages.map((item) => ({ alt: item.alt, url: publicImageUrl(item.url) }))}
+          />
         ) : image ? (
           <Image src={publicImageUrl(image.url)} alt={image.alt ?? product.name} fill sizes="(max-width: 700px) 50vw, 25vw" />
         ) : (
@@ -65,9 +60,7 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
         <small>{product.stockQuantity > 0 ? `${product.stockQuantity} in stock` : "Out of stock"}</small>
         <div className="product-actions">
           <Link href={`/product/${product.slug}`}>View</Link>
-          <form action={addToCartAction.bind(null, product.slug)}>
-            <PendingButton className="" disabled={product.stockQuantity <= 0} pendingText="Adding...">Cart</PendingButton>
-          </form>
+          <AddToCartButton action={addToCartAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} />
         </div>
       </div>
     </article>

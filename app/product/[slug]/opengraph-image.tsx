@@ -15,6 +15,19 @@ function price(cents: number) {
   return `KSH ${new Intl.NumberFormat("en-KE", { maximumFractionDigits: 0 }).format(cents / 100)}`;
 }
 
+async function safeImageDataUrl(url: string) {
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(6000) });
+    const contentType = response.headers.get("content-type")?.split(";")[0]?.toLowerCase() ?? "";
+    if (!response.ok || !["image/jpeg", "image/png", "image/webp"].includes(contentType)) return null;
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > 8 * 1024 * 1024) return null;
+    return `data:${contentType};base64,${Buffer.from(bytes).toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ProductOpenGraphImage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProductBySlugStrict(slug);
@@ -25,6 +38,7 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
 
   const image = getPrimaryImage(product.images);
   const imageUrl = image ? publicImageUrl(image.url) : `${siteConfig.url}/logo.jpg`;
+  const safeImageUrl = await safeImageDataUrl(imageUrl);
 
   return new ImageResponse(
     (
@@ -33,6 +47,7 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
           width: "1200px",
           height: "630px",
           display: "flex",
+          flexDirection: "column",
           background: "#fff7ed",
           color: "#172033",
           fontFamily: "Arial, sans-serif",
@@ -41,59 +56,67 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
       >
         <div
           style={{
-            width: "54%",
-            height: "100%",
+            width: "100%",
+            height: "455px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "#ffffff"
+            background: "#ffffff",
+            overflow: "hidden"
           }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt={product.name}
-            src={imageUrl}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "contain"
-            }}
-          />
+          {safeImageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              alt={product.name}
+              src={safeImageUrl}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain"
+              }}
+            />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", color: "#0e52a4" }}>
+              <div style={{ display: "flex", fontSize: 56, fontWeight: 900, letterSpacing: "2px" }}>SUNSPARK</div>
+              <div style={{ display: "flex", fontSize: 25, fontWeight: 700, color: "#f36f21" }}>Electricals & Solar</div>
+            </div>
+          )}
         </div>
         <div
           style={{
-            flex: 1,
+            width: "100%",
+            height: "175px",
             display: "flex",
-            flexDirection: "column",
+            alignItems: "center",
             justifyContent: "space-between",
-            padding: "48px 54px",
-            background: "linear-gradient(135deg, #0e52a4 0%, #0b3f7e 58%, #f36f21 160%)",
+            gap: "42px",
+            padding: "26px 42px",
+            borderTop: "8px solid #f36f21",
+            background: "linear-gradient(115deg, #0e52a4 0%, #0b3f7e 72%, #f36f21 155%)",
             color: "#ffffff"
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ display: "flex", fontSize: 24, fontWeight: 800, opacity: 0.94 }}>
-              {siteConfig.name}
+          <div style={{ display: "flex", flex: 1, flexDirection: "column", gap: "8px" }}>
+            <div style={{ display: "flex", fontSize: 20, fontWeight: 800, opacity: 0.9 }}>
+              {siteConfig.name} · {product.category.name}
             </div>
             <div
               style={{
                 display: "flex",
-                fontSize: product.name.length > 60 ? 42 : 50,
+                fontSize: product.name.length > 70 ? 31 : product.name.length > 45 ? 35 : 40,
                 fontWeight: 900,
-                lineHeight: 1.06,
+                lineHeight: 1.05,
                 letterSpacing: 0
               }}
             >
               {product.name}
             </div>
-            <div style={{ display: "flex", fontSize: 24, opacity: 0.9 }}>
-              {product.category.name}
-            </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", fontSize: 46, fontWeight: 900 }}>{price(product.priceCents)}</div>
-              <div style={{ display: "flex", fontSize: 21, opacity: 0.88 }}>WhatsApp {siteConfig.phone}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "5px" }}>
+              <div style={{ display: "flex", fontSize: 40, fontWeight: 900 }}>{price(product.priceCents)}</div>
+              <div style={{ display: "flex", fontSize: 18, opacity: 0.88 }}>WhatsApp {siteConfig.phone}</div>
             </div>
             <div
               style={{
@@ -101,8 +124,8 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
                 borderRadius: 999,
                 background: "#ffffff",
                 color: "#0e52a4",
-                padding: "15px 22px",
-                fontSize: 22,
+                padding: "13px 20px",
+                fontSize: 20,
                 fontWeight: 900
               }}
             >

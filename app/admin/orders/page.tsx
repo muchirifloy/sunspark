@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AdminLayout } from "@/components/admin/admin-layout";
-import { PendingButton } from "@/components/ui/pending-button";
+import { OrderStatusControls } from "@/components/admin/order-status-controls";
 import type { OrderStatus, PaymentStatus, Order } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch, toQueryString } from "@/lib/api/client";
@@ -60,8 +60,7 @@ export default async function AdminOrdersPage({
           <span>Update</span>
         </div>
         {orders.map((order) => (
-          <form action={updateOrderAction.bind(null, order.id)} className="admin-table-row order-admin-row" key={order.id}>
-            <input name="returnTo" type="hidden" value="/admin/orders" />
+          <div className="admin-table-row order-admin-row" key={order.id}>
             <strong>{order.orderNumber}</strong>
             <span>
               {order.customerName}<br />
@@ -70,26 +69,8 @@ export default async function AdminOrdersPage({
               {order.deliveryMapUrl ? <a className="map-text-link" href={order.deliveryMapUrl} rel="noreferrer" target="_blank">Open map</a> : null}
             </span>
             <span>{formatMoney(order.totalCents)}</span>
-            <select name="paymentStatus" defaultValue={order.paymentStatus}>
-              <option value="UNPAID">Unpaid</option>
-              <option value="PENDING">Pending</option>
-              <option value="PAID">Paid</option>
-              <option value="FAILED">Failed</option>
-              <option value="REFUNDED">Refunded</option>
-            </select>
-            <select name="status" defaultValue={order.status}>
-              <option value="PENDING">Pending</option>
-              <option value="CONFIRMED">Confirmed</option>
-              <option value="PROCESSING">Processing</option>
-              <option value="READY">Ready</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-            <div className="order-admin-actions">
-              <PendingButton className="order-save-btn" pendingText="Saving...">Save</PendingButton>
-              <Link className="table-link receipt-link" href={`/admin/walk-in-sale/${order.id}/receipt`}>Receipt</Link>
-            </div>
-          </form>
+            <OrderStatusControls action={updateOrderAction.bind(null, order.id)} initialPaymentStatus={order.paymentStatus} initialStatus={order.status} receiptHref={`/admin/walk-in-sale/${order.id}/receipt`} />
+          </div>
         ))}
         {!orders.length ? <p className="empty-state">No orders yet.</p> : null}
       </div>

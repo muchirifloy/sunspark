@@ -1,38 +1,51 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { adminLogoutAction } from "@/app/admin/logout-action";
 import { AdminBackButton } from "@/components/admin/admin-back-button";
+import { AdminNavigation, type AdminNavItem } from "@/components/admin/admin-navigation";
+import { apiFetch } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
 import { canManageCatalog } from "@/lib/auth/roles";
+import type { UserRole } from "@/lib/types";
 
-const adminLinks = [
-  { href: "/admin", label: "Dashboard" },
-  { href: "/admin/products", label: "Products" },
-  { href: "/admin/products/new", label: "Add Product", ownerOnly: true },
-  { href: "/admin/walk-in-sale", label: "Walk-in Sale" },
-  { href: "/admin/invoices", label: "Invoices & Quotes" },
-  { href: "/admin/categories", label: "Categories", ownerOnly: true },
-  { href: "/admin/orders", label: "Orders" },
-  { href: "/admin/payments", label: "Payments" },
-  { href: "/admin/reports", label: "Reports" },
-  { href: "/admin/campaigns", label: "Campaigns", ownerOnly: true },
-  { href: "/admin/customers", label: "Customers" },
-  { href: "/admin/settings", label: "Settings", ownerOnly: true }
+const adminLinks: AdminNavItem[] = [
+  { href: "/admin", label: "Dashboard", group: "Overview", icon: "dashboard" },
+  { href: "/admin/orders", label: "Orders", group: "Sales", icon: "orders", showsOrderCount: true },
+  { href: "/admin/customers", label: "Customers", group: "Sales", icon: "customers" },
+  { href: "/admin/payments", label: "Payments", group: "Sales", icon: "payments" },
+  { href: "/admin/invoices", label: "Invoices & Quotes", group: "Sales", icon: "documents" },
+  { href: "/admin/walk-in-sale", label: "Walk-in Sale", group: "Sales", icon: "sale" },
+  { href: "/admin/products", label: "Products", group: "Catalogue", icon: "products" },
+  { href: "/admin/categories", label: "Categories", group: "Catalogue", icon: "categories", ownerOnly: true },
+  { href: "/admin/products/new", label: "Add Product", group: "Catalogue", icon: "add", ownerOnly: true },
+  { href: "/admin/products?status=low", label: "Low Stock", group: "Inventory", icon: "stock" },
+  { href: "/admin/campaigns", label: "Campaigns", group: "Marketing", icon: "campaigns", ownerOnly: true },
+  { href: "/admin/reports", label: "Sales Reports", group: "Reports", icon: "reports" },
+  { href: "/admin/reports?view=stock", label: "Stock Reports", group: "Reports", icon: "stock" },
+  { href: "/admin/reports?view=customers", label: "Customer Reports", group: "Reports", icon: "customers" },
+  { href: "/admin/settings", label: "Store Settings", group: "Settings", icon: "settings", ownerOnly: true }
 ];
 
 export async function AdminLayout({
   actions,
   children,
+  pendingOrderCountOverride,
+  roleOverride,
   subtitle,
   title
 }: {
   actions?: ReactNode;
   children: ReactNode;
+  pendingOrderCountOverride?: number;
+  roleOverride?: UserRole;
   subtitle?: string;
   title: string;
 }) {
-  const session = await getSession();
-  const links = adminLinks.filter((link) => !link.ownerOnly || canManageCatalog(session?.role));
+  const [session, pendingOrderCount] = await Promise.all([
+    getSession(),
+    pendingOrderCountOverride === undefined ? getPendingOrderCount() : Promise.resolve(pendingOrderCountOverride),
+  ]);
+  const links = adminLinks.filter((link) => !link.ownerOnly || canManageCatalog(roleOverride ?? session?.role));
 
   return (
     <section className="admin-page">
@@ -49,11 +62,7 @@ export async function AdminLayout({
           </summary>
           <div className="admin-mobile-panel">
             <nav aria-label="Admin mobile navigation">
-              {links.map((link) => (
-                <Link href={link.href} key={link.href}>
-                  {link.label}
-                </Link>
-              ))}
+              <Suspense fallback={null}><AdminNavigation links={links} pendingOrderCount={pendingOrderCount} /></Suspense>
             </nav>
             <form action={adminLogoutAction} className="admin-mobile-logout">
               <button type="submit">Log out</button>
@@ -61,11 +70,7 @@ export async function AdminLayout({
           </div>
         </details>
         <nav aria-label="Admin navigation">
-          {links.map((link) => (
-            <Link href={link.href} key={link.href}>
-              {link.label}
-            </Link>
-          ))}
+          <Suspense fallback={null}><AdminNavigation links={links} pendingOrderCount={pendingOrderCount} /></Suspense>
         </nav>
         <form action={adminLogoutAction} className="admin-logout">
           <button type="submit">Log out</button>
@@ -87,4 +92,13 @@ export async function AdminLayout({
       </div>
     </section>
   );
+}
+
+async function getPendingOrderCount() {
+  try {
+    const result = await apiFetch<{ count: number }>("/admin/orders/pending-count");
+    return Math.max(Number(result.count) || 0, 0);
+  } catch {
+    return 0;
+  }
 }

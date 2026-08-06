@@ -1,5 +1,6 @@
 import { siteConfig } from "@/lib/site-config";
 import { publicImageUrl } from "@/lib/products/images";
+import { richTextToPlainText } from "@/lib/products/rich-text";
 
 type MerchantImage = {
   url: string;
@@ -46,7 +47,7 @@ function merchantPrice(priceCents: number) {
 
 function productDescription(product: MerchantProduct) {
   return (
-    product.description?.trim() ||
+    richTextToPlainText(product.description) ||
     product.shortDescription?.trim() ||
     `${product.name} from ${siteConfig.name}.`
   ).slice(0, 5000);

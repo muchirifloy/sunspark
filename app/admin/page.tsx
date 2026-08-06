@@ -1,145 +1,181 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { DashboardCategoryCard } from "@/components/admin/dashboard-category-card";
+import { DashboardSalesCard, type ChartPeriod, type SalesBucket } from "@/components/admin/dashboard-sales-card";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch, toQueryString } from "@/lib/api/client";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-type ChartPeriod = "days" | "weeks" | "months";
-type ChartMetric = "sales" | "profit" | "orders";
+type DashboardOverview = {
+  metrics: {
+    salesCents: number;
+    previousSalesCents: number;
+    profitCents: number;
+    previousProfitCents: number;
+    orders: number;
+    previousOrders: number;
+    customers: number;
+    previousCustomers: number;
+    averageOrderCents: number;
+  };
+  categories: { name: string; salesCents: number; units: number }[];
+  topProducts: { productId: string | null; name: string; salesCents: number; units: number }[];
+  recentOrders: { id: string; orderNumber: string; customerName: string; totalCents: number; status: string; createdAt: string }[];
+  inventory: { total: number; healthy: number; low: number; outOfStock: number };
+};
+
+const emptyOverview: DashboardOverview = {
+  metrics: {
+    salesCents: 0,
+    previousSalesCents: 0,
+    profitCents: 0,
+    previousProfitCents: 0,
+    orders: 0,
+    previousOrders: 0,
+    customers: 0,
+    previousCustomers: 0,
+    averageOrderCents: 0
+  },
+  categories: [],
+  topProducts: [],
+  recentOrders: [],
+  inventory: { total: 0, healthy: 0, low: 0, outOfStock: 0 }
+};
 
 export default async function AdminDashboardPage({
   searchParams
 }: {
-  searchParams?: Promise<{ period?: string; metric?: string; error?: string }>;
+  searchParams?: Promise<{ error?: string; preview?: string }>;
 }) {
-  const admin = await requireAdmin();
   const params = await searchParams;
-  const period = ["days", "weeks", "months"].includes(String(params?.period)) ? params?.period as ChartPeriod : "days";
-  const metric = ["sales", "profit", "orders"].includes(String(params?.metric)) ? params?.metric as ChartMetric : "sales";
-  const [stats, summary] = await Promise.all([getStats(), getSalesSummary(period)]);
+  const preview = process.env.NODE_ENV === "development" && params?.preview === "1";
+  const admin = preview ? { name: "Sunspark Admin" } : await requireAdmin();
+  return <AdminDashboard adminName={admin.name} params={params} preview={preview} />;
+}
+
+async function AdminDashboard({
+  adminName,
+  params,
+  preview = false
+}: {
+  adminName: string;
+  params?: { error?: string };
+  preview?: boolean;
+}) {
+  const [overview, days, weeks, months] = await Promise.all([
+    getOverview(),
+    getSalesSummary("days"),
+    getSalesSummary("weeks"),
+    getSalesSummary("months"),
+  ]);
+  const metrics = overview.metrics;
 
   return (
     <AdminLayout
-      title={`Welcome, ${admin.name}`}
-      subtitle="Monitor Sunspark products, customers, stock, orders, checkout options, and invoices."
-      actions={
-        <Link className="primary-btn" href="/admin/products/new">
-          Add product
-        </Link>
-      }
+      title="Overview"
+      subtitle={`Welcome back, ${adminName}. Here is what is happening with your store.`}
+      actions={<Link className="primary-btn" href="/admin/products/new">Add product</Link>}
+      pendingOrderCountOverride={preview ? 12 : undefined}
+      roleOverride={preview ? "ADMIN" : undefined}
     >
-        {params?.error === "permission" ? <p className="admin-feedback error" role="alert">This section is restricted to the owner admin account.</p> : null}
-        <div className="admin-stats">
-          <Stat label="Products" value={stats.products} />
-          <Stat label="Orders" value={stats.orders} />
-          <Stat label="Customers" value={stats.customers} />
-          <Stat label="Low stock" value={stats.lowStock} />
-        </div>
-        <div className="admin-actions">
-          <Link className="secondary-btn" href="/admin/products">
-            Manage products
-          </Link>
-          <Link className="secondary-btn" href="/admin/categories">
-            Categories
-          </Link>
-          <Link className="secondary-btn" href="/admin/walk-in-sale">
-            Walk-in sale
-          </Link>
-          <Link className="secondary-btn" href="/admin/customers">
-            Customers
-          </Link>
-        </div>
-        <SalesChart period={period} metric={metric} summary={summary} />
+      {params?.error === "permission" ? <p className="admin-feedback error" role="alert">This section is restricted to the owner admin account.</p> : null}
+
+      <section className="dashboard-metrics" aria-label="Last seven days">
+        <DashboardMetric accent="purple" change={change(metrics.salesCents, metrics.previousSalesCents)} label="Total sales" value={formatMoney(metrics.salesCents)} />
+        <DashboardMetric accent="green" change={change(metrics.orders, metrics.previousOrders)} label="Total orders" value={String(metrics.orders)} />
+        <DashboardMetric accent="orange" change={change(metrics.profitCents, metrics.previousProfitCents)} label="Gross profit" value={formatMoney(metrics.profitCents)} />
+        <DashboardMetric accent="blue" change={change(metrics.customers, metrics.previousCustomers)} label="New customers" value={String(metrics.customers)} />
+        <DashboardMetric accent="navy" label="Avg. order value" value={formatMoney(metrics.averageOrderCents)} />
+      </section>
+
+      <div className="dashboard-grid dashboard-grid-primary">
+        <DashboardSalesCard summaries={{ days: days.buckets, weeks: weeks.buckets, months: months.buckets }} />
+
+        <DashboardCategoryCard categories={overview.categories} />
+      </div>
+
+      <div className="dashboard-grid dashboard-grid-secondary">
+        <section className="dashboard-card">
+          <DashboardCardHeader title="Recent orders"><Link className="dashboard-view-link" href="/admin/orders">View all</Link></DashboardCardHeader>
+          <div className="dashboard-order-list">
+            {overview.recentOrders.map((order) => (
+              <Link className="dashboard-order-row" href={`/admin/orders?q=${encodeURIComponent(order.orderNumber)}`} key={order.id}>
+                <span><strong>#{order.orderNumber}</strong><small>{order.customerName}</small></span>
+                <strong>{formatMoney(order.totalCents)}</strong>
+                <span className={`dashboard-status ${order.status.toLowerCase()}`}>{order.status.toLowerCase()}</span>
+                <time>{new Date(order.createdAt).toLocaleDateString("en-KE", { day: "numeric", month: "short" })}</time>
+              </Link>
+            ))}
+            {!overview.recentOrders.length ? <p className="dashboard-empty">No orders have been recorded yet.</p> : null}
+          </div>
+        </section>
+
+        <section className="dashboard-card">
+          <DashboardCardHeader eyebrow="Last 30 days" title="Top selling products"><Link className="dashboard-view-link" href="/admin/products">Products</Link></DashboardCardHeader>
+          <ol className="dashboard-product-list">
+            {overview.topProducts.map((product, index) => (
+              <li key={`${product.productId ?? product.name}-${index}`}>
+                <span className="dashboard-rank">{index + 1}</span>
+                <span><strong>{product.name}</strong><small>{product.units} units</small></span>
+                <strong>{formatMoney(product.salesCents)}</strong>
+              </li>
+            ))}
+          </ol>
+          {!overview.topProducts.length ? <p className="dashboard-empty">Sales will rank products here.</p> : null}
+        </section>
+
+        <section className="dashboard-card">
+          <DashboardCardHeader title="Inventory health"><Link className="dashboard-view-link" href="/admin/products?status=low">Review stock</Link></DashboardCardHeader>
+          <InventoryHealth inventory={overview.inventory} />
+        </section>
+      </div>
     </AdminLayout>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function DashboardMetric({ accent, change: delta, label, value }: { accent: string; change?: number | null; label: string; value: string }) {
   return (
-    <div className="stat-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <article className={`dashboard-metric ${accent}`}>
+      <span className="dashboard-metric-icon" aria-hidden="true"></span>
+      <div><span>{label}</span><strong>{value}</strong></div>
+      <small className={delta !== undefined && delta !== null && delta < 0 ? "down" : "up"}>
+        {delta === null || delta === undefined ? "Last 7 days" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta).toFixed(1)}% vs previous 7 days`}
+      </small>
+    </article>
+  );
+}
+
+function DashboardCardHeader({ children, eyebrow, title }: { children?: ReactNode; eyebrow?: string; title: string }) {
+  return <header className="dashboard-card-header"><div>{eyebrow ? <span>{eyebrow}</span> : null}<h2>{title}</h2></div>{children}</header>;
+}
+
+function InventoryHealth({ inventory }: { inventory: DashboardOverview["inventory"] }) {
+  const safeTotal = Math.max(inventory.total, 1);
+  return (
+    <div className="dashboard-inventory">
+      <div className="dashboard-inventory-total"><strong>{inventory.total}</strong><span>Active products</span></div>
+      <div className="dashboard-inventory-bar" aria-label={`${inventory.healthy} healthy, ${inventory.low} low, ${inventory.outOfStock} out of stock`}>
+        <span className="healthy" style={{ width: `${(inventory.healthy / safeTotal) * 100}%` }}></span>
+        <span className="low" style={{ width: `${(inventory.low / safeTotal) * 100}%` }}></span>
+        <span className="out" style={{ width: `${(inventory.outOfStock / safeTotal) * 100}%` }}></span>
+      </div>
+      <div className="dashboard-inventory-list"><span><i className="healthy"></i>Healthy <strong>{inventory.healthy}</strong></span><span><i className="low"></i>Low stock <strong>{inventory.low}</strong></span><span><i className="out"></i>Out of stock <strong>{inventory.outOfStock}</strong></span></div>
     </div>
   );
 }
 
-async function getStats() {
-  try {
-    return await apiFetch<{ products: number; orders: number; customers: number; lowStock: number }>("/admin/stats");
-  } catch {
-    return { products: 0, orders: 0, customers: 0, lowStock: 0 };
-  }
+function change(current: number, previous: number) {
+  if (!previous) return current ? 100 : null;
+  return ((current - previous) / previous) * 100;
+}
+
+async function getOverview() {
+  return apiFetch<DashboardOverview>("/admin/dashboard-overview").catch(() => emptyOverview);
 }
 
 async function getSalesSummary(period: ChartPeriod) {
-  try {
-    return await apiFetch<{
-      period: ChartPeriod;
-      buckets: { bucket: string; label: string; orders: number; salesCents: number; profitCents: number }[];
-    }>(`/admin/sales-summary${toQueryString({ period })}`);
-  } catch {
-    return { period, buckets: [] };
-  }
-}
-
-function SalesChart({
-  metric,
-  period,
-  summary
-}: {
-  metric: ChartMetric;
-  period: ChartPeriod;
-  summary: Awaited<ReturnType<typeof getSalesSummary>>;
-}) {
-  const metricLabels: Record<ChartMetric, string> = { sales: "Sales", profit: "Profit", orders: "Orders" };
-  const values = summary.buckets.map((bucket) => metric === "orders" ? bucket.orders : metric === "profit" ? bucket.profitCents : bucket.salesCents);
-  const max = Math.max(...values, 1);
-  const totalSales = summary.buckets.reduce((sum, bucket) => sum + bucket.salesCents, 0);
-  const totalProfit = summary.buckets.reduce((sum, bucket) => sum + bucket.profitCents, 0);
-  const totalOrders = summary.buckets.reduce((sum, bucket) => sum + bucket.orders, 0);
-
-  return (
-    <section className="admin-chart-card">
-      <div className="admin-chart-heading">
-        <div>
-          <span className="eyebrow">Operations snapshot</span>
-          <h2>{metricLabels[metric]} trend</h2>
-          <p>Quick movement view from completed and active orders, excluding cancelled sales.</p>
-        </div>
-        <div className="chart-summary">
-          <span>{formatMoney(totalSales)}</span>
-          <small>Sales</small>
-          <span>{formatMoney(totalProfit)}</span>
-          <small>Profit</small>
-          <span>{totalOrders}</span>
-          <small>Orders</small>
-        </div>
-      </div>
-      <div className="chart-controls" aria-label="Sales chart filters">
-        {(["days", "weeks", "months"] as ChartPeriod[]).map((item) => (
-          <Link className={item === period ? "active" : ""} href={`/admin${toQueryString({ period: item, metric })}`} key={item}>{item}</Link>
-        ))}
-        {(["sales", "profit", "orders"] as ChartMetric[]).map((item) => (
-          <Link className={item === metric ? "active" : ""} href={`/admin${toQueryString({ period, metric: item })}`} key={item}>{item}</Link>
-        ))}
-      </div>
-      <div className="bar-chart" role="img" aria-label={`${metricLabels[metric]} by ${period}`}>
-        {summary.buckets.map((bucket) => {
-          const value = metric === "orders" ? bucket.orders : metric === "profit" ? bucket.profitCents : bucket.salesCents;
-          const height = Math.max(8, Math.round((value / max) * 100));
-          return (
-            <div className="bar-chart-column" key={bucket.bucket}>
-              <div className="bar-chart-track">
-                <span style={{ height: `${height}%` }} title={`${bucket.label}: ${metric === "orders" ? value : formatMoney(value)}`} />
-              </div>
-              <strong>{metric === "orders" ? value : formatMoney(value)}</strong>
-              <small>{bucket.label}</small>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
+  return apiFetch<{ period: ChartPeriod; buckets: SalesBucket[] }>(`/admin/sales-summary${toQueryString({ period })}`).catch(() => ({ period, buckets: [] }));
 }

@@ -20,7 +20,7 @@ export default async function NewProductPage({ searchParams }: { searchParams?: 
 
   return (
     <AdminLayout title="Add Product" subtitle="Create product details, stock, pricing, and image gallery.">
-      <div className="admin-shell narrow">
+      <div className="admin-shell product-editor-shell">
         {params?.error && messages[params.error] ? <p className="admin-feedback error" role="alert">{params.message ?? messages[params.error]}</p> : null}
         <ProductForm action={createProductAction} categories={categories} />
       </div>

@@ -1,39 +1,39 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { preventAdminShopping } from "@/lib/auth/guards";
-import { addCartItem, updateCartItem } from "@/lib/cart/cart-service";
+import { addCartItem, getCartItemCount, updateCartItem } from "@/lib/cart/cart-service";
+import type { ActionResult } from "@/lib/actions/result";
 
-export async function addToCartAction(slug: string) {
-  await preventAdminShopping();
-  await addCartItem(slug, 1);
-  revalidatePath("/", "layout");
+export async function addToCartAction(slug: string): Promise<ActionResult> {
+  try {
+    await preventAdminShopping();
+    await addCartItem(slug, 1);
+    return { ok: true, message: "Added to cart.", cartCount: await getCartItemCount() };
+  } catch {
+    return { ok: false, message: "Could not add this product. Please try again." };
+  }
 }
 
-export async function addToCartAndRedirectAction(slug: string) {
-  await preventAdminShopping();
-  await addCartItem(slug, 1);
-  revalidatePath("/", "layout");
-  redirect("/cart");
+export async function addSelectedToCartAction(slug: string, formData: FormData): Promise<ActionResult> {
+  try {
+    await preventAdminShopping();
+    const optionId = String(formData.get("optionId") ?? "") || null;
+    await addCartItem(slug, 1, optionId);
+    return { ok: true, message: "Added to cart.", cartCount: await getCartItemCount() };
+  } catch {
+    return { ok: false, message: "Could not add this option. Please try again." };
+  }
 }
 
-export async function addSelectedToCartAndRedirectAction(slug: string, formData: FormData) {
-  await preventAdminShopping();
-  const optionId = String(formData.get("optionId") ?? "") || null;
-  await addCartItem(slug, 1, optionId);
-  revalidatePath("/", "layout");
-  redirect("/cart");
-}
-
-export async function updateCartAction(formData: FormData) {
-  await preventAdminShopping();
-  const slug = String(formData.get("slug") ?? "");
-  const optionId = String(formData.get("optionId") ?? "") || null;
-  const quantity = Number(formData.get("quantity") ?? 0);
-
-  await updateCartItem(slug, Number.isFinite(quantity) ? quantity : 0, optionId);
-  revalidatePath("/", "layout");
-  revalidatePath("/cart");
-  redirect("/cart");
+export async function updateCartAction(formData: FormData): Promise<ActionResult> {
+  try {
+    await preventAdminShopping();
+    const slug = String(formData.get("slug") ?? "");
+    const optionId = String(formData.get("optionId") ?? "") || null;
+    const quantity = Number(formData.get("quantity") ?? 0);
+    await updateCartItem(slug, Number.isFinite(quantity) ? quantity : 0, optionId);
+    return { ok: true, message: "Cart updated.", cartCount: await getCartItemCount() };
+  } catch {
+    return { ok: false, message: "Cart update failed. Your previous quantity was kept." };
+  }
 }

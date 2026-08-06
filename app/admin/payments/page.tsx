@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { OrderStatusControls } from "@/components/admin/order-status-controls";
 import type { Order, PaymentMethod, PaymentStatus } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch, toQueryString } from "@/lib/api/client";
@@ -52,28 +53,12 @@ export default async function AdminPaymentsPage({
           <span>Verify</span>
         </div>
         {orders.map((order) => (
-          <form action={updateOrderAction.bind(null, order.id)} className="admin-table-row payment-row" key={order.id}>
-            <input name="returnTo" type="hidden" value="/admin/payments" />
+          <div className="admin-table-row payment-row" key={order.id}>
             <strong>{order.orderNumber}</strong>
             <span>{order.paymentMethod}</span>
             <span>{formatMoney(order.totalCents)}</span>
-            <select name="paymentStatus" defaultValue={order.paymentStatus}>
-              <option value="UNPAID">Unpaid</option>
-              <option value="PENDING">Pending</option>
-              <option value="PAID">Paid</option>
-              <option value="FAILED">Failed</option>
-              <option value="REFUNDED">Refunded</option>
-            </select>
-            <select name="status" defaultValue={order.status}>
-              <option value="PENDING">Pending</option>
-              <option value="CONFIRMED">Confirmed</option>
-              <option value="PROCESSING">Processing</option>
-              <option value="READY">Ready</option>
-              <option value="COMPLETED">Completed</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-            <button type="submit">Update</button>
-          </form>
+            <OrderStatusControls action={updateOrderAction.bind(null, order.id)} initialPaymentStatus={order.paymentStatus} initialStatus={order.status} />
+          </div>
         ))}
         {!orders.length ? <p className="empty-state">No payments to verify yet.</p> : null}
       </div>

@@ -32,7 +32,7 @@ export default async function EditProductPage({
 
   return (
     <AdminLayout title="Edit Product" subtitle={product.name}>
-      <div className="admin-shell narrow">
+      <div className="admin-shell product-editor-shell">
         {query?.error && messages[query.error] ? <p className="admin-feedback error" role="alert">{query.message ?? messages[query.error]}</p> : null}
         <ProductForm action={updateProductAction.bind(null, product.id)} categories={categories} product={product} />
       </div>

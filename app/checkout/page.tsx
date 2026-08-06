@@ -1,6 +1,6 @@
 import { checkoutAction } from "@/app/checkout/actions";
 import { LocationPicker } from "@/components/site/location-picker";
-import { PendingButton } from "@/components/ui/pending-button";
+import { AsyncSubmitForm } from "@/components/ui/async-submit-form";
 import { preventAdminShopping } from "@/lib/auth/guards";
 import { getSession } from "@/lib/auth/session";
 import { apiFetch } from "@/lib/api/client";
@@ -22,7 +22,7 @@ export default async function CheckoutPage() {
           <div className="section-title">
             <h3>Checkout</h3>
           </div>
-          <form action={checkoutAction} className="admin-form">
+          <AsyncSubmitForm action={checkoutAction} buttonLabel="Place order" className="admin-form" disabled={!cart.items.length} pendingLabel="Submitting order...">
             <label>
               Name
               <input name="customerName" defaultValue={customer?.name ?? ""} required />
@@ -39,15 +39,14 @@ export default async function CheckoutPage() {
               Delivery note
               <textarea name="deliveryNote" rows={4} />
             </label>
-            <LocationPicker />
+            <LocationPicker apiKey={process.env.GOOGLE_MAPS_BROWSER_API_KEY ?? process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? ""} />
             <label>
               Payment method
               <select name="paymentMethod" defaultValue="WHATSAPP">
                 <option value="WHATSAPP">WhatsApp checkout</option>
               </select>
             </label>
-            <PendingButton disabled={!cart.items.length} pendingText="Submitting order...">Place order</PendingButton>
-          </form>
+          </AsyncSubmitForm>
         </div>
         <aside className="order-summary">
           <h2>Order Summary</h2>

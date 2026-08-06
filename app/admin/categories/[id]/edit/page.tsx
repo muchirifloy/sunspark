@@ -31,7 +31,7 @@ export default async function EditCategoryPage({
 
   return (
     <AdminLayout title="Edit Category" subtitle={`Update ${category.name} and the homepage category card.`}>
-      <div className="admin-shell narrow">
+      <div className="admin-shell category-editor-shell">
         {query?.error ? <p className="admin-feedback error" role="alert">{query.message ?? messages[query.error] ?? messages.save}</p> : null}
         <CategoryForm action={updateCategoryAction.bind(null, category.id)} cancelHref="/admin/categories" category={category} />
       </div>

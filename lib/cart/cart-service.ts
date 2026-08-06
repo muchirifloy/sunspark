@@ -61,6 +61,11 @@ export async function addCartItem(slug: string, quantity = 1, optionId?: string 
   await writeCartCookie(items);
 }
 
+export async function getCartItemCount() {
+  const items = await readCartCookie();
+  return items.reduce((total, item) => total + item.quantity, 0);
+}
+
 export async function updateCartItem(slug: string, quantity: number, optionId?: string | null) {
   const items = await readCartCookie();
   const target = { slug, optionId: optionId || null };

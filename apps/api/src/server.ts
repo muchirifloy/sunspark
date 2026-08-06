@@ -970,6 +970,106 @@ app.get("/admin/sales-summary", asyncRoute(async (request, response) => {
   response.json({ period, buckets });
 }));
 
+app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
+  const [salesRows, customerRows, categoryRows, productRows, recentOrders, inventoryRows] = await Promise.all([
+    query<{
+      currentSalesCents: number | string;
+      previousSalesCents: number | string;
+      currentProfitCents: number | string;
+      previousProfitCents: number | string;
+      currentOrders: number | string;
+      previousOrders: number | string;
+    }>(
+      `SELECT
+         COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents ELSE 0 END), 0) AS currentSalesCents,
+         COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND o.created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents ELSE 0 END), 0) AS previousSalesCents,
+         COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents - (oi.cost_cents * oi.quantity) ELSE 0 END), 0) AS currentProfitCents,
+         COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND o.created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents - (oi.cost_cents * oi.quantity) ELSE 0 END), 0) AS previousProfitCents,
+         COUNT(DISTINCT CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN o.id END) AS currentOrders,
+         COUNT(DISTINCT CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND o.created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN o.id END) AS previousOrders
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+         AND o.status <> 'CANCELLED'`
+    ),
+    query<{ currentCustomers: number | string; previousCustomers: number | string }>(
+      `SELECT
+         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS currentCustomers,
+         COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS previousCustomers
+       FROM users
+       WHERE role = 'CUSTOMER' AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)`
+    ),
+    query<{ name: string; salesCents: number | string; units: number | string }>(
+      `SELECT COALESCE(c.name, 'Other') AS name,
+         COALESCE(SUM(oi.total_cents), 0) AS salesCents,
+         COALESCE(SUM(oi.quantity), 0) AS units
+       FROM order_items oi
+       INNER JOIN orders o ON o.id = oi.order_id
+       LEFT JOIN products p ON p.id = oi.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status <> 'CANCELLED'
+       GROUP BY COALESCE(c.name, 'Other')
+       ORDER BY salesCents DESC
+       LIMIT 6`
+    ),
+    query<{ productId: string | null; name: string; salesCents: number | string; units: number | string }>(
+      `SELECT oi.product_id AS productId, oi.product_name AS name,
+         COALESCE(SUM(oi.total_cents), 0) AS salesCents,
+         COALESCE(SUM(oi.quantity), 0) AS units
+       FROM order_items oi
+       INNER JOIN orders o ON o.id = oi.order_id
+       WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND o.status <> 'CANCELLED'
+       GROUP BY oi.product_id, oi.product_name
+       ORDER BY salesCents DESC
+       LIMIT 5`
+    ),
+    query<{ id: string; orderNumber: string; customerName: string; totalCents: number; status: string; createdAt: Date }>(
+      `SELECT id, order_number AS orderNumber, customer_name AS customerName,
+         total_cents AS totalCents, status, created_at AS createdAt
+       FROM orders
+       ORDER BY created_at DESC
+       LIMIT 6`
+    ),
+    query<{ total: number | string; healthy: number | string; low: number | string; outOfStock: number | string }>(
+      `SELECT COUNT(*) AS total,
+         COUNT(CASE WHEN stock_quantity > low_stock_threshold THEN 1 END) AS healthy,
+         COUNT(CASE WHEN stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 END) AS low,
+         COUNT(CASE WHEN stock_quantity <= 0 THEN 1 END) AS outOfStock
+       FROM products
+       WHERE is_active = TRUE`
+    )
+  ]);
+
+  const sales = salesRows[0];
+  const customers = customerRows[0];
+  const inventory = inventoryRows[0];
+  const currentSalesCents = Number(sales?.currentSalesCents ?? 0);
+  const currentOrders = Number(sales?.currentOrders ?? 0);
+
+  response.json({
+    metrics: {
+      salesCents: currentSalesCents,
+      previousSalesCents: Number(sales?.previousSalesCents ?? 0),
+      profitCents: Number(sales?.currentProfitCents ?? 0),
+      previousProfitCents: Number(sales?.previousProfitCents ?? 0),
+      orders: currentOrders,
+      previousOrders: Number(sales?.previousOrders ?? 0),
+      customers: Number(customers?.currentCustomers ?? 0),
+      previousCustomers: Number(customers?.previousCustomers ?? 0),
+      averageOrderCents: currentOrders ? Math.round(currentSalesCents / currentOrders) : 0
+    },
+    categories: categoryRows.map((row) => ({ name: row.name, salesCents: Number(row.salesCents), units: Number(row.units) })),
+    topProducts: productRows.map((row) => ({ ...row, salesCents: Number(row.salesCents), units: Number(row.units) })),
+    recentOrders: recentOrders.map((row) => ({ ...row, totalCents: Number(row.totalCents) })),
+    inventory: {
+      total: Number(inventory?.total ?? 0),
+      healthy: Number(inventory?.healthy ?? 0),
+      low: Number(inventory?.low ?? 0),
+      outOfStock: Number(inventory?.outOfStock ?? 0)
+    }
+  });
+}));
+
 app.get("/campaigns", asyncRoute(async (_request, response) => {
   const rows = await query<CampaignRow>(
     "SELECT * FROM campaigns WHERE is_active = TRUE AND (ends_at IS NULL OR ends_at > NOW()) ORDER BY updated_at DESC LIMIT 3"
@@ -991,8 +1091,13 @@ app.get("/admin/customers", asyncRoute(async (request, response) => {
     values.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
   const rows = await query(
-    `SELECT id, name, email, phone, role, created_at AS createdAt, updated_at AS updatedAt
-     FROM users WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT u.id, u.name, u.email, u.phone, u.role, u.created_at AS createdAt, u.updated_at AS updatedAt,
+       COUNT(o.id) AS orders, COALESCE(SUM(CASE WHEN o.status <> 'CANCELLED' THEN o.total_cents ELSE 0 END), 0) AS spentCents
+     FROM users u
+     LEFT JOIN orders o ON o.user_id = u.id
+     WHERE ${where.map((condition) => condition.replace(/\b(role|name|email|phone)\b/g, "u.$1")).join(" AND ")}
+     GROUP BY u.id, u.name, u.email, u.phone, u.role, u.created_at, u.updated_at
+     ORDER BY u.created_at DESC LIMIT 200`,
     values
   );
   response.json(rows);
@@ -1982,6 +2087,11 @@ app.get("/admin/orders", asyncRoute(async (request, response) => {
       )
     : [];
   response.json(orders.map((order) => ({ ...order, items: items.filter((item) => item.orderId === order.id) })));
+}));
+
+app.get("/admin/orders/pending-count", asyncRoute(async (_request, response) => {
+  const rows = await query<{ count: number }>("SELECT COUNT(*) AS count FROM orders WHERE status = 'PENDING'");
+  response.json({ count: Number(rows[0]?.count ?? 0) });
 }));
 
 app.get("/admin/orders/:id", asyncRoute(async (request, response) => {

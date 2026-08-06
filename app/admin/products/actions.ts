@@ -6,6 +6,8 @@ import { apiFetch, ApiError } from "@/lib/api/client";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { getImageUploadError, saveProductImages } from "@/lib/uploads/product-images";
 import { productInputSchema, slugifyProductName } from "@/lib/products/validation";
+import { sanitizeRichText } from "@/lib/products/rich-text";
+import type { ActionResult } from "@/lib/actions/result";
 
 function amountToCents(value: FormDataEntryValue | null) {
   const numeric = Number(String(value ?? "0"));
@@ -13,16 +15,17 @@ function amountToCents(value: FormDataEntryValue | null) {
 }
 
 function parseProductForm(formData: FormData) {
-  return productInputSchema.parse({
+  const options = parseOptionRows(formData);
+  const defaultOption = options.find((option) => option.isDefault) ?? options[0];
+  const input = productInputSchema.parse({
     name: formData.get("name"),
     brand: String(formData.get("brand") ?? "").trim() || undefined,
     categoryId: formData.get("categoryId"),
-    shortDescription: String(formData.get("shortDescription") ?? "").trim() || undefined,
-    description: String(formData.get("description") ?? "").trim() || undefined,
-    priceCents: amountToCents(formData.get("priceKsh")),
-    compareAtCents: formData.get("compareAtKsh") ? amountToCents(formData.get("compareAtKsh")) : undefined,
-    costCents: formData.get("costKsh") ? amountToCents(formData.get("costKsh")) : 0,
-    sellingUnit: formData.get("sellingUnit"),
+    description: sanitizeRichText(String(formData.get("description") ?? "")) || undefined,
+    priceCents: defaultOption?.priceCents ?? 0,
+    compareAtCents: defaultOption?.compareAtCents,
+    costCents: defaultOption?.costCents ?? 0,
+    sellingUnit: defaultOption?.sellingUnit ?? "UNIT",
     stockQuantity: formData.get("stockQuantity"),
     lowStockThreshold: formData.get("lowStockThreshold"),
     isActive: formData.get("isActive") === "on",
@@ -32,6 +35,8 @@ function parseProductForm(formData: FormData) {
     seoDescription: String(formData.get("seoDescription") ?? "").trim() || undefined,
     seoKeywords: String(formData.get("seoKeywords") ?? "").trim() || undefined
   });
+
+  return { input, options };
 }
 
 function getImageFiles(formData: FormData) {
@@ -54,8 +59,7 @@ function parseOptionRows(formData: FormData) {
   const compareValues = formData.getAll("optionCompareAtKsh");
   const costValues = formData.getAll("optionCostKsh");
   const multipliers = formData.getAll("optionStockMultiplier");
-  const defaultOptionId = String(formData.get("defaultOptionId") ?? "");
-  const defaultOptionIndex = Number(formData.get("defaultOptionIndex") ?? -1);
+  const defaultOptionKey = String(formData.get("defaultOptionKey") ?? "");
 
   return labels.flatMap((label, index) => {
     const hasPrice = String(priceValues[index] ?? "").trim() !== "";
@@ -68,7 +72,9 @@ function parseOptionRows(formData: FormData) {
       compareAtCents: String(compareValues[index] ?? "").trim() ? amountToCents(compareValues[index]) : undefined,
       costCents: String(costValues[index] ?? "").trim() ? amountToCents(costValues[index]) : 0,
       stockMultiplier: Math.max(Number(String(multipliers[index] ?? "1")) || 1, 0.01),
-      isDefault: ids[index] ? ids[index] === defaultOptionId : index === defaultOptionIndex,
+      isDefault: ids[index]
+        ? defaultOptionKey === `id:${ids[index]}`
+        : defaultOptionKey === `index:${index}`,
       sortOrder: index
     }];
   });
@@ -96,14 +102,14 @@ function isRedirectError(error: unknown) {
   return typeof error === "object" && error !== null && "digest" in error && String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT");
 }
 
-export async function createProductAction(formData: FormData) {
+export async function createProductAction(formData: FormData): Promise<ActionResult> {
   await requireOwnerAdmin();
 
   try {
-  const input = parseProductForm(formData);
-  const files = getImageFiles(formData);
+    const { input, options } = parseProductForm(formData);
+    const files = getImageFiles(formData);
     const imageError = getImageUploadError(files);
-    if (imageError) redirect(productErrorPath("/admin/products/new", "image", imageError));
+    if (imageError) return { ok: false, message: imageError };
 
     const images = await saveProductImages(files, input.name);
     const slug = slugifyProductName(input.name);
@@ -113,31 +119,30 @@ export async function createProductAction(formData: FormData) {
       body: JSON.stringify({
         ...input,
         slug,
-        options: parseOptionRows(formData),
+        options,
         images: images.map((image, index) => ({ ...image, isPrimary: index === 0, sortOrder: index }))
       })
     });
   } catch (error) {
-    if (isRedirectError(error)) throw error;
     const status = error instanceof ApiError ? error.status : 0;
     const message = errorMessage(error);
     console.error("Product create failed", { status, message });
-    redirect(productErrorPath("/admin/products/new", status === 409 ? "duplicate" : "save", message));
+    return { ok: false, message: status === 409 ? `A matching product already exists. ${message}` : message };
   }
 
   revalidatePath("/");
   revalidatePath("/store");
-  redirect("/admin/products");
+  return { ok: true, message: "Product created.", redirectTo: "/admin/products" };
 }
 
-export async function updateProductAction(productId: string, formData: FormData) {
+export async function updateProductAction(productId: string, formData: FormData): Promise<ActionResult> {
   await requireOwnerAdmin();
 
   try {
-    const input = parseProductForm(formData);
+    const { input, options } = parseProductForm(formData);
     const files = getImageFiles(formData);
     const imageError = getImageUploadError(files);
-    if (imageError) redirect(productErrorPath(`/admin/products/${productId}/edit`, "image", imageError));
+    if (imageError) return { ok: false, message: imageError };
 
     const images = await saveProductImages(files, input.name);
     const primaryImageId = String(formData.get("primaryImageId") ?? "");
@@ -148,7 +153,7 @@ export async function updateProductAction(productId: string, formData: FormData)
       body: JSON.stringify({
         ...input,
         slug: slugifyProductName(input.name),
-        options: parseOptionRows(formData),
+        options,
         deleteOptionIds: getDeleteOptionIds(formData),
         images: images.map((image, index) => ({ ...image, isPrimary: false, sortOrder: index })),
         deleteImageIds,
@@ -156,16 +161,15 @@ export async function updateProductAction(productId: string, formData: FormData)
       })
     });
   } catch (error) {
-    if (isRedirectError(error)) throw error;
     const status = error instanceof ApiError ? error.status : 0;
     const message = errorMessage(error);
     console.error("Product update failed", { status, message });
-    redirect(productErrorPath(`/admin/products/${productId}/edit`, status === 409 ? "duplicate" : "save", message));
+    return { ok: false, message: status === 409 ? `A matching product already exists. ${message}` : message };
   }
 
   revalidatePath("/");
   revalidatePath("/store");
-  redirect("/admin/products");
+  return { ok: true, message: "Product changes saved without reloading." };
 }
 
 export async function deleteProductAction(productId: string) {
