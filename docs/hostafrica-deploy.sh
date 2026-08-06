@@ -15,6 +15,21 @@ RUN_SEED="${RUN_SEED:-0}"
 RUN_LEGACY_IMPORT="${RUN_LEGACY_IMPORT:-0}"
 BUILD_ON_HOST="${BUILD_ON_HOST:-0}"
 API_ROOT="$APP_DIR/apps/api"
+UPLOADS_DIR="$API_ROOT/public/uploads"
+UPLOADS_BACKUP_DIR="${UPLOADS_BACKUP_DIR:-$HOME/sunsparkbackend-storage/uploads}"
+
+copy_uploads() {
+  source_dir="$1"
+  target_dir="$2"
+  [ -d "$source_dir" ] || return 0
+
+  mkdir -p "$target_dir"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a "$source_dir/" "$target_dir/"
+  else
+    cp -a "$source_dir"/. "$target_dir/"
+  fi
+}
 
 find_node_env_dir() {
   if [ -n "$NODE_ENV_DIR" ] && [ -f "$NODE_ENV_DIR/bin/activate" ]; then
@@ -57,11 +72,17 @@ if [ ! -d "$APP_DIR/.git" ]; then
   git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
 
+echo "==> Preserving uploaded images outside the Git checkout"
+copy_uploads "$UPLOADS_DIR" "$UPLOADS_BACKUP_DIR"
+
 cd "$APP_DIR"
 git fetch origin "$BRANCH"
 git checkout "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 git log -1 --oneline
+
+echo "==> Restoring persistent uploaded images"
+copy_uploads "$UPLOADS_BACKUP_DIR" "$UPLOADS_DIR"
 
 NODE_ENV_DIR="$(find_node_env_dir)"
 

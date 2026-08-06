@@ -9,6 +9,8 @@ bash docs/hostafrica-deploy.sh
 
 On the first deploy and whenever `apps/api/package-lock.json` changes, the deployment script runs `npm install` before restarting the backend. No manual dependency-install flag is needed.
 
+Uploaded product and category images are preserved in `~/sunsparkbackend-storage/uploads` before every Git update and restored into `apps/api/public/uploads` afterward. The uploads directory, dependency marker, and Passenger restart marker are ignored by Git.
+
 ```bash
 cd ~/sunsparkbackend
 RUN_SEED=1 bash docs/hostafrica-deploy.sh

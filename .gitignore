@@ -10,7 +10,10 @@ coverage/
 playwright-report/
 test-results/
 public/uploads/
+apps/api/public/uploads/
 apps/api/private-backups/
+apps/api/.package-lock.sha256
+apps/api/tmp/
 .vercel/
 exports/
 outputs/
