@@ -21,8 +21,19 @@ async function readCartCookie(): Promise<CartCookieItem[]> {
   }
 
   try {
-    const items = JSON.parse(value) as CartCookieItem[];
-    return items.filter((item) => item.slug && item.quantity > 0);
+    const parsed = JSON.parse(value) as CartCookieItem[];
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item.slug === "string" && item.slug)
+      .map((item) => ({
+        slug: item.slug,
+        optionId: item.optionId ?? null,
+        quantity: normalizeQuantity(Number(item.quantity))
+      }))
+      .filter((item) => item.quantity > 0)
+      .slice(0, maxCartLines);
   } catch {
     return [];
   }
@@ -39,8 +50,26 @@ async function writeCartCookie(items: CartCookieItem[]) {
   });
 }
 
+// The cart lives entirely in a cookie, so an unbounded one eventually exceeds
+// the request header limit and locks the visitor out of the whole site with a
+// 431 rather than just breaking the cart.
+const maxCartLines = 50;
+const maxLineQuantity = 999;
+
+export class CartLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CartLimitError";
+  }
+}
+
 function cartKey(item: Pick<CartCookieItem, "slug" | "optionId">) {
   return `${item.slug}::${item.optionId ?? ""}`;
+}
+
+function normalizeQuantity(quantity: number) {
+  if (!Number.isFinite(quantity)) return 0;
+  return Math.min(Math.max(Math.floor(quantity), 0), maxLineQuantity);
 }
 
 function defaultOption(product: Product) {
@@ -53,12 +82,16 @@ export async function addCartItem(slug: string, quantity = 1, optionId?: string 
   const existing = items.find((item) => cartKey(item) === cartKey(target));
 
   if (existing) {
-    existing.quantity += quantity;
+    existing.quantity = normalizeQuantity(existing.quantity + quantity);
   } else {
-    items.push({ slug, optionId: optionId || null, quantity });
+    if (items.length >= maxCartLines) {
+      throw new CartLimitError("Your cart is full. Remove a product before adding another.");
+    }
+
+    items.push({ slug, optionId: optionId || null, quantity: normalizeQuantity(quantity) });
   }
 
-  await writeCartCookie(items);
+  await writeCartCookie(items.filter((item) => item.quantity > 0));
 }
 
 export async function getCartItemCount() {
@@ -69,13 +102,26 @@ export async function getCartItemCount() {
 export async function updateCartItem(slug: string, quantity: number, optionId?: string | null) {
   const items = await readCartCookie();
   const target = { slug, optionId: optionId || null };
-  const matchesTarget = (item: CartCookieItem) => {
-    if (cartKey(item) === cartKey(target)) return true;
-    return item.slug === slug && (!item.optionId || !target.optionId);
-  };
-  const nextItems = quantity <= 0
-    ? items.filter((item) => !matchesTarget(item))
-    : items.map((item) => matchesTarget(item) ? { ...item, quantity } : item);
+  const exactMatch = items.findIndex((item) => cartKey(item) === cartKey(target));
+
+  // An edit must land on exactly one line. The previous loose fallback could
+  // match every line for the same product, so changing one option's quantity
+  // silently rewrote the others too. Fall back to a single unambiguous line
+  // only when there is no exact match.
+  const looseMatches = items
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.slug === slug);
+  const targetIndex = exactMatch !== -1 ? exactMatch : looseMatches.length === 1 ? looseMatches[0].index : -1;
+
+  if (targetIndex === -1) {
+    return;
+  }
+
+  const nextQuantity = normalizeQuantity(quantity);
+  const nextItems = nextQuantity <= 0
+    ? items.filter((_item, index) => index !== targetIndex)
+    : items.map((item, index) => (index === targetIndex ? { ...item, quantity: nextQuantity } : item));
+
   await writeCartCookie(nextItems);
 }
 

@@ -16,7 +16,7 @@ export default async function WishlistPage() {
     <section className="section">
       <div className="container">
         <div className="section-title">
-          <h3>Wishlist</h3>
+          <h1>Wishlist</h1>
         </div>
         {products.length ? (
           <div className="product-grid">

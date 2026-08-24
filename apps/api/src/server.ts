@@ -114,16 +114,41 @@ function sameSecret(left: string, right: string) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+// Forwarding headers are attacker-controlled unless a proxy we trust rewrites
+// them, and honouring them blindly lets one client rotate its rate-limit bucket
+// on every request. Opt in explicitly once a proxy sits in front of this API.
+const trustProxyHeaders = /^(1|true|yes)$/i.test(env("TRUST_PROXY_HEADERS", ""));
+
 function clientKey(request: express.Request) {
-  return String(request.headers["cf-connecting-ip"] || request.headers["x-forwarded-for"] || request.socket.remoteAddress || "unknown")
-    .split(",")[0]
-    .trim();
+  if (trustProxyHeaders) {
+    const forwarded = String(request.headers["cf-connecting-ip"] || request.headers["x-forwarded-for"] || "")
+      .split(",")[0]
+      .trim();
+
+    if (forwarded) return forwarded;
+  }
+
+  return request.socket.remoteAddress || "unknown";
 }
 
 function rateLimit({ windowMs, max, label }: { windowMs: number; max: number; label: string }) {
   const hits = new Map<string, { count: number; resetAt: number }>();
+  let nextSweepAt = 0;
+
+  // Without this the map keeps one entry per client address forever, which is a
+  // slow memory leak on a long-running process.
+  const sweepExpired = (now: number) => {
+    if (now < nextSweepAt) return;
+    nextSweepAt = now + windowMs;
+
+    for (const [entryKey, entry] of hits) {
+      if (entry.resetAt <= now) hits.delete(entryKey);
+    }
+  };
+
   return (request: express.Request, _response: express.Response, next: express.NextFunction) => {
     const now = Date.now();
+    sweepExpired(now);
     const key = `${label}:${clientKey(request)}`;
     const current = hits.get(key);
 
@@ -154,10 +179,19 @@ app.use((_request, response, next) => {
 });
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || !allowedOrigins.length || allowedOrigins.includes(origin.replace(/\/+$/, ""))) {
+    // Server-to-server callers (the storefront, deploy scripts) send no Origin.
+    if (!origin) {
       callback(null, true);
       return;
     }
+
+    // An unset FRONTEND_ORIGIN used to allow every origin with credentials.
+    // Missing configuration now denies browsers instead of opening the API up.
+    if (allowedOrigins.includes(origin.replace(/\/+$/, ""))) {
+      callback(null, true);
+      return;
+    }
+
     callback(new HttpError(403, "This origin is not allowed."));
   },
   credentials: true
@@ -167,7 +201,10 @@ app.use("/uploads", express.static(uploadRoot, { maxAge: "30d", immutable: true 
 app.use(["/auth/login", "/auth/register", "/auth/forgot-password", "/auth/reset-password"], rateLimit({ windowMs: 15 * 60 * 1000, max: 20, label: "auth" }));
 app.use(["/orders/checkout"], rateLimit({ windowMs: 10 * 60 * 1000, max: 30, label: "checkout" }));
 app.use(["/admin/uploads"], rateLimit({ windowMs: 10 * 60 * 1000, max: 40, label: "uploads" }));
-app.use("/admin", (request, _response, next) => {
+// The storefront only ever reaches this API server-to-server, so every route
+// that can return another customer's details is gated on the shared service
+// token. Browsers only talk to /uploads directly.
+function requireServiceToken(request: express.Request, _response: express.Response, next: express.NextFunction) {
   if (!adminApiToken) {
     next(new HttpError(503, "Admin API protection is not configured."));
     return;
@@ -180,7 +217,9 @@ app.use("/admin", (request, _response, next) => {
   }
 
   next();
-});
+}
+
+app.use("/admin", requireServiceToken);
 
 function truthy(value: 0 | 1 | boolean) {
   return value === true || value === 1;
@@ -1999,7 +2038,7 @@ app.post("/orders/checkout", asyncRoute(async (request, response) => {
   response.status(201).json(order);
 }));
 
-app.get("/orders", asyncRoute(async (request, response) => {
+app.get("/orders", requireServiceToken, asyncRoute(async (request, response) => {
   const userId = String(request.query.userId ?? "");
   const email = String(request.query.email ?? "");
   const where: string[] = [];
@@ -2035,6 +2074,61 @@ app.get("/orders", asyncRoute(async (request, response) => {
     values
   );
   response.json(rows);
+}));
+
+// Customer-facing single order lookup. The caller must prove which customer is
+// asking, and ownership is enforced in SQL so a bug in the storefront cannot
+// turn this into an "any order by id" endpoint.
+app.get("/orders/:id", requireServiceToken, asyncRoute(async (request, response) => {
+  const orderId = String(request.params.id ?? "");
+  const userId = String(request.query.userId ?? "");
+  const email = String(request.query.email ?? "");
+
+  const ownership: string[] = [];
+  const values: unknown[] = [orderId];
+
+  if (userId) {
+    ownership.push("user_id = ?");
+    values.push(userId);
+  }
+
+  if (email) {
+    ownership.push("(user_id IS NULL AND customer_email = ?)");
+    values.push(email);
+  }
+
+  if (!ownership.length) {
+    throw new HttpError(400, "An order owner is required.");
+  }
+
+  const orders = await query<Record<string, unknown>>(
+    `SELECT
+       id, order_number AS orderNumber, user_id AS userId, customer_name AS customerName,
+       customer_email AS customerEmail, customer_phone AS customerPhone, delivery_note AS deliveryNote,
+       delivery_location AS deliveryLocation, delivery_map_url AS deliveryMapUrl,
+       delivery_latitude AS deliveryLatitude, delivery_longitude AS deliveryLongitude,
+       status, payment_method AS paymentMethod, payment_status AS paymentStatus,
+       subtotal_cents AS subtotalCents, total_cents AS totalCents, created_at AS createdAt, updated_at AS updatedAt
+     FROM orders
+     WHERE id = ? AND (${ownership.join(" OR ")})
+     LIMIT 1`,
+    values
+  );
+
+  if (!orders[0]) throw new HttpError(404, "Order not found.");
+
+  const [items, invoices] = await Promise.all([
+    query<Record<string, unknown>>(
+      `SELECT id, order_id AS orderId, product_id AS productId, product_option_id AS productOptionId,
+       product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
+       unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+       FROM order_items WHERE order_id = ?`,
+      [orderId]
+    ),
+    query<Record<string, unknown>>("SELECT id, order_id AS orderId, invoice_number AS invoiceNumber, issued_at AS issuedAt FROM invoices WHERE order_id = ? LIMIT 1", [orderId])
+  ]);
+
+  response.json({ ...orders[0], items, invoice: invoices[0] ?? null });
 }));
 
 app.get("/admin/orders", asyncRoute(async (request, response) => {

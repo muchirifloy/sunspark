@@ -1,3 +1,4 @@
+import { Inter } from "next/font/google";
 import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 import { adminLogoutAction } from "@/app/admin/logout-action";
@@ -7,6 +8,10 @@ import { apiFetch } from "@/lib/api/client";
 import { getSession } from "@/lib/auth/session";
 import { canManageCatalog } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/types";
+
+// Only the dashboard uses Inter, so it loads here instead of on every
+// storefront page through the root layout.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 const adminLinks: AdminNavItem[] = [
   { href: "/admin", label: "Dashboard", group: "Overview", icon: "dashboard" },
@@ -48,7 +53,7 @@ export async function AdminLayout({
   const links = adminLinks.filter((link) => !link.ownerOnly || canManageCatalog(roleOverride ?? session?.role));
 
   return (
-    <section className="admin-page">
+    <section className={`admin-page ${inter.variable}`}>
       <aside className="admin-sidebar">
         <Link className="admin-brand" href="/admin">
           <span>Sunspark</span>

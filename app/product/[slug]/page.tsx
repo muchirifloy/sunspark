@@ -8,6 +8,7 @@ import { ProductGallery } from "@/components/site/product-gallery";
 import { ProductOptionPurchase } from "@/components/site/product-option-purchase";
 import { ProductShareButton } from "@/components/site/product-share-button";
 import { PendingButton } from "@/components/ui/pending-button";
+import { jsonLdHtml } from "@/lib/json-ld";
 import { absoluteUrl, productUrl } from "@/lib/merchant/feed";
 import { getPrimaryImage, publicImageUrl } from "@/lib/products/images";
 import { getProductBySlugStrict, getProductCompanions, getRelatedProducts } from "@/lib/products/queries";
@@ -97,7 +98,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   return (
     <>
       <script
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdHtml(productSchema) }}
         type="application/ld+json"
       />
       <section className="section">

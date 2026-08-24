@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { catalogTag } from "@/lib/cache-tags";
 import { redirect } from "next/navigation";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { apiFetch, ApiError } from "@/lib/api/client";
@@ -62,6 +63,7 @@ export async function createCategoryAction(formData: FormData) {
     redirect(categoryErrorUrl("/admin/categories", error));
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   redirect("/admin/categories?notice=saved");
@@ -103,6 +105,7 @@ export async function updateCategoryAction(categoryId: string, formData: FormDat
     redirect(categoryErrorUrl(`/admin/categories/${categoryId}/edit`, error));
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   revalidatePath(`/category/${slug}`);
@@ -119,6 +122,7 @@ export async function deleteCategoryAction(categoryId: string) {
     redirect(`/admin/categories?error=${error.status === 409 ? "delete-linked" : "delete"}`);
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   revalidatePath("/admin/categories");
@@ -130,6 +134,7 @@ export async function hideCategoryAction(categoryId: string) {
 
   await apiFetch(`/admin/categories/${categoryId}/hide`, { method: "PATCH" });
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   revalidatePath("/admin/categories");

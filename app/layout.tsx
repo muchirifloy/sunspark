@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { CampaignModal } from "@/components/site/campaign-modal";
 import { SupportChat } from "@/components/site/support-chat";
-import { apiFetch } from "@/lib/api/client";
+import { jsonLdHtml } from "@/lib/json-ld";
+import { getCampaigns } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
-import type { Campaign } from "@/lib/types";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const montserrat = Montserrat({ subsets: ["latin"], variable: "--font-montserrat", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
@@ -56,7 +56,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const campaigns = await apiFetch<Campaign[]>("/campaigns").catch(() => []);
+  const campaigns = await getCampaigns();
   const businessSchema = {
     "@context": "https://schema.org",
     "@type": "Store",
@@ -74,10 +74,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     sameAs: [siteConfig.facebookUrl]
   };
   return (
-    <html className={inter.variable} lang="en">
+    <html className={montserrat.variable} lang="en">
       <body>
         <script
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(businessSchema) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdHtml(businessSchema) }}
           type="application/ld+json"
         />
         <Header />

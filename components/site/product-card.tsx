@@ -50,9 +50,9 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
         {product.isHotDeal ? <strong className="badge">Hot deal</strong> : null}
       </Link>
       <div className="product-body">
-        <h2>
+        <h3>
           <Link href={`/product/${product.slug}`}>{product.name}</Link>
-        </h2>
+        </h3>
         <div className="price-row">
           <strong>{formatMoney(product.priceCents)} <small>/{sellingUnitLabel(product.sellingUnit ?? "UNIT")}</small></strong>
           {product.compareAtCents ? <span>{formatMoney(product.compareAtCents)}</span> : null}

@@ -62,7 +62,7 @@ export function CartEditor({
   return (
     <div className="checkout-layout">
       <div>
-        <div className="section-title"><h3>Shopping Cart</h3></div>
+        <div className="section-title"><h1>Shopping Cart</h1></div>
         {items.length ? (
           <div className="cart-list-page" aria-busy={isPending}>
             {items.map((item) => (

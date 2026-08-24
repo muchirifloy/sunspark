@@ -1,7 +1,7 @@
 "use server";
 
 import { preventAdminShopping } from "@/lib/auth/guards";
-import { addCartItem, getCartItemCount, updateCartItem } from "@/lib/cart/cart-service";
+import { CartLimitError, addCartItem, getCartItemCount, updateCartItem } from "@/lib/cart/cart-service";
 import type { ActionResult } from "@/lib/actions/result";
 
 export async function addToCartAction(slug: string): Promise<ActionResult> {
@@ -9,7 +9,8 @@ export async function addToCartAction(slug: string): Promise<ActionResult> {
     await preventAdminShopping();
     await addCartItem(slug, 1);
     return { ok: true, message: "Added to cart.", cartCount: await getCartItemCount() };
-  } catch {
+  } catch (error) {
+    if (error instanceof CartLimitError) return { ok: false, message: error.message };
     return { ok: false, message: "Could not add this product. Please try again." };
   }
 }
@@ -20,7 +21,8 @@ export async function addSelectedToCartAction(slug: string, formData: FormData):
     const optionId = String(formData.get("optionId") ?? "") || null;
     await addCartItem(slug, 1, optionId);
     return { ok: true, message: "Added to cart.", cartCount: await getCartItemCount() };
-  } catch {
+  } catch (error) {
+    if (error instanceof CartLimitError) return { ok: false, message: error.message };
     return { ok: false, message: "Could not add this option. Please try again." };
   }
 }

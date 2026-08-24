@@ -7,10 +7,34 @@ const backendImageUrl = new URL(
     "https://backend.sunsparkelectricals.co.ke"
 );
 
+const backendOrigin = backendImageUrl.origin;
+
+// 'unsafe-inline' is still required for scripts: the JSON-LD blocks and Next's
+// own bootstrap are inline, and nothing here can carry a per-request nonce while
+// pages are served from the static shell. The policy still blocks injected
+// third-party script hosts, framing, and <base> hijacking, which is the bulk of
+// what a storefront CSP buys. The Google entries are what the Maps JS SDK on the
+// checkout location picker pulls in.
+const isDevelopment = process.env.NODE_ENV === "development";
+
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  `img-src 'self' data: blob: ${backendOrigin} https://sunspark.co.ke https://*.googleapis.com https://*.gstatic.com https://*.google.com`,
+  `connect-src 'self' ${backendOrigin} https://maps.googleapis.com`,
+  "manifest-src 'self'",
+  // Local development serves the API over plain HTTP, so only force the upgrade
+  // where everything is already behind TLS.
+  ...(isDevelopment ? [] : ["upgrade-insecure-requests"])
+].join("; ");
+
 const nextConfig: NextConfig = {
-  typescript: {
-    ignoreBuildErrors: true
-  },
   experimental: {
     // Shared hosting has a strict process limit. Keep page-data collection to one worker.
     cpus: 1,
@@ -52,7 +76,11 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=()" }
+          { key: "Permissions-Policy", value: "camera=(), microphone=()" },
+          ...(isDevelopment
+            ? []
+            : [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }]),
+          { key: "Content-Security-Policy", value: contentSecurityPolicy }
         ]
       }
     ];

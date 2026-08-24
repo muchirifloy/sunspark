@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { catalogTag } from "@/lib/cache-tags";
 import { redirect } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
@@ -130,6 +131,7 @@ export async function createProductAction(formData: FormData): Promise<ActionRes
     return { ok: false, message: status === 409 ? `A matching product already exists. ${message}` : message };
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   return { ok: true, message: "Product created.", redirectTo: "/admin/products" };
@@ -167,6 +169,7 @@ export async function updateProductAction(productId: string, formData: FormData)
     return { ok: false, message: status === 409 ? `A matching product already exists. ${message}` : message };
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   return { ok: true, message: "Product changes saved without reloading." };
@@ -182,6 +185,7 @@ export async function deleteProductAction(productId: string) {
     redirect(`/admin/products?error=${error.status === 409 ? "delete-linked" : "delete"}`);
   }
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   redirect("/admin/products?notice=deleted");
@@ -192,6 +196,7 @@ export async function hideProductAction(productId: string) {
 
   await apiFetch(`/admin/products/${productId}/hide`, { method: "PATCH" });
 
+  updateTag(catalogTag);
   revalidatePath("/");
   revalidatePath("/store");
   redirect("/admin/products?notice=hidden");

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CategoryTile } from "@/components/site/category-tile";
 import { ProductCard } from "@/components/site/product-card";
+import { jsonLdHtml } from "@/lib/json-ld";
 import { getCategoryBySlug } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
 
@@ -68,7 +69,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   return (
     <>
       <script
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(categorySchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdHtml(categorySchema) }}
         type="application/ld+json"
       />
       <section className="section">

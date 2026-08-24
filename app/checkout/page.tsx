@@ -20,7 +20,7 @@ export default async function CheckoutPage() {
       <div className="container checkout-layout">
         <div>
           <div className="section-title">
-            <h3>Checkout</h3>
+            <h1>Checkout</h1>
           </div>
           <AsyncSubmitForm action={checkoutAction} buttonLabel="Place order" className="admin-form" disabled={!cart.items.length} pendingLabel="Submitting order...">
             <label>

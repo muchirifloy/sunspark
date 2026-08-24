@@ -23,11 +23,20 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Routes that can expose another customer's details are gated on the shared
+// service token at the backend. Checkout stays open because it creates an order
+// rather than reading one.
+function requiresServiceToken(pathname: string) {
+  if (pathname.startsWith("/admin/")) return true;
+  if (pathname === "/orders") return true;
+  return pathname.startsWith("/orders/") && pathname !== "/orders/checkout";
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = new URL(path, getApiBaseUrl());
   const headers = new Headers(init.headers);
   const adminToken = process.env.API_ADMIN_TOKEN ?? process.env.ADMIN_API_TOKEN;
-  const isAdminRequest = url.pathname.startsWith("/admin/");
+  const needsServiceToken = requiresServiceToken(url.pathname);
   const method = String(init.method ?? "GET").toUpperCase();
   const canRetry = method === "GET" || method === "HEAD";
   const attempts = canRetry ? Math.max(Number(process.env.API_FETCH_RETRIES ?? defaultReadRetries) + 1, 1) : 1;
@@ -36,11 +45,11 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     headers.set("content-type", "application/json");
   }
 
-  if (isAdminRequest && !adminToken) {
-    throw new ApiError("Admin API access is not configured on this server.", 503);
+  if (needsServiceToken && !adminToken) {
+    throw new ApiError("Backend service access is not configured on this server.", 503);
   }
 
-  if (isAdminRequest && adminToken && !headers.has("x-sunspark-admin-token")) {
+  if (needsServiceToken && adminToken && !headers.has("x-sunspark-admin-token")) {
     headers.set("x-sunspark-admin-token", adminToken);
   }
 
@@ -57,11 +66,15 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     let response: Response;
 
     try {
+      // Reads that opt into revalidation manage their own freshness, so the
+      // blanket no-store default only applies when nothing else was asked for.
+      const cacheMode = init.cache ?? (init.next ? undefined : "no-store");
+
       response = await fetch(url, {
         ...init,
         headers,
         signal: controller.signal,
-        cache: init.cache ?? "no-store"
+        ...(cacheMode ? { cache: cacheMode } : {})
       });
     } catch (error) {
       lastError = controller.signal.aborted

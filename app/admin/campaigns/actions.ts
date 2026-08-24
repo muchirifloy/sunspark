@@ -1,6 +1,7 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { catalogTag } from "@/lib/cache-tags";
 import { redirect } from "next/navigation";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
@@ -36,6 +37,7 @@ export async function createCampaignAction(formData: FormData) {
     })
   });
 
+  updateTag(catalogTag);
   revalidatePath("/");
   redirect("/admin/campaigns");
 }
@@ -62,6 +64,7 @@ export async function updateCampaignAction(campaignId: string, formData: FormDat
     })
   });
 
+  updateTag(catalogTag);
   revalidatePath("/");
   redirect("/admin/campaigns");
 }
@@ -71,6 +74,7 @@ export async function deleteCampaignAction(campaignId: string) {
 
   await apiFetch(`/admin/campaigns/${campaignId}`, { method: "DELETE" });
 
+  updateTag(catalogTag);
   revalidatePath("/");
   redirect("/admin/campaigns");
 }

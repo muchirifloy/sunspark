@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CategoryTile } from "@/components/site/category-tile";
 import { CampaignFeature } from "@/components/site/campaign-feature";
 import { ProductCard } from "@/components/site/product-card";
+import { formatMoney } from "@/lib/money";
 import { getHomeData } from "@/lib/products/queries";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,9 @@ export default async function HomePage() {
 
   return (
     <>
+      {/* The design opens straight into the category grid, so the page heading
+          is present for the document outline without altering the layout. */}
+      <h1 className="visually-hidden">Sunspark Electrical and Solar - electricals, electronics, and solar products in Nairobi</h1>
       <section className="section category-section">
         <div className="container storefront-showcase">
           <div className="category-grid shop-grid">
@@ -31,7 +35,7 @@ export default async function HomePage() {
           {topProducts.length ? (
             <div className="mini-product-panel">
               <div className="mini-panel-heading"><strong>Best sellers</strong><Link href="/store">Shop all</Link></div>
-              {topProducts.map((product) => <Link href={`/product/${product.slug}`} key={product.id}><span>{product.name}</span><strong>{new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 }).format(product.priceCents / 100)}</strong></Link>)}
+              {topProducts.map((product) => <Link href={`/product/${product.slug}`} key={product.id}><span>{product.name}</span><strong>{formatMoney(product.priceCents)}</strong></Link>)}
             </div>
           ) : null}
           <CampaignFeature campaign={campaigns[0]} />
@@ -42,7 +46,7 @@ export default async function HomePage() {
           <section className="section product-section" key={category.id}>
             <div className="container">
               <div className="section-title">
-                <h3>{category.name} Products</h3>
+                <h2>{category.name} Products</h2>
                 <Link href={`/category/${category.slug}`}>View all</Link>
               </div>
               {chunkProducts(category.products, 12).map((row, index) => (
@@ -59,7 +63,7 @@ export default async function HomePage() {
         <section className="section product-section">
           <div className="container">
             <div className="section-title">
-              <h3>Shop Sunspark Products</h3>
+              <h2>Shop Sunspark Products</h2>
               <div className="section-tabs">
                 {displayCategories.map((category) => (
                   <Link href={`/category/${category.slug}`} key={category.slug}>

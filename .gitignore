@@ -1,20 +1,44 @@
+# Dependencies
 node_modules/
+
+# Build output
 .next/
 out/
 dist/
 !apps/api/dist/
 !apps/api/dist/**
+*.tsbuildinfo
+
+# Secrets and local environment
 .env
 .env*.local
+apps/api/.env
+apps/api/.env*.local
+
+# Test and tooling artefacts
 coverage/
 playwright-report/
 test-results/
+.eslintcache
+
+# Local scratch: dev logs, screenshots, SQL dumps, generated PDFs
+outputs/
+exports/
+tmp/
+apps/api/tmp/
+*.log
+
+# Uploaded and generated media (kept on the server, not in the repo)
 public/uploads/
 apps/api/public/uploads/
 apps/api/private-backups/
-apps/api/.package-lock.sha256
-apps/api/tmp/
+
+# Deploy and host state
 .vercel/
-exports/
-outputs/
-*.tsbuildinfo
+apps/api/.package-lock.sha256
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

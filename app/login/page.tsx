@@ -62,5 +62,12 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
 }
 
 function safeCustomerPath(value: string) {
-  return value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/admin") ? value : "";
+  // Browsers normalise backslashes to forward slashes, so "/\evil.com" would
+  // otherwise slip through as the protocol-relative "//evil.com".
+  const normalized = value.split(String.fromCharCode(92)).join("/");
+
+  if (!normalized.startsWith("/") || normalized.startsWith("//")) return "";
+  if (normalized.startsWith("/admin")) return "";
+
+  return normalized;
 }

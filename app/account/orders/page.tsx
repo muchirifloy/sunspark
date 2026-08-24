@@ -14,7 +14,7 @@ export default async function OrdersPage() {
     <section className="section">
       <div className="container">
         <div className="section-title">
-          <h3>Orders</h3>
+          <h1>Orders</h1>
         </div>
         <div className="admin-table">
           {orders.map((order) => (
