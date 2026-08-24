@@ -23,11 +23,15 @@ const contentSecurityPolicy = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com",
+  // Webpack's dev server evaluates modules with eval() for hot reloading, so
+  // development needs 'unsafe-eval'. Production must never carry it.
+  `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""} https://maps.googleapis.com https://maps.gstatic.com`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
   `img-src 'self' data: blob: ${backendOrigin} https://sunspark.co.ke https://*.googleapis.com https://*.gstatic.com https://*.google.com`,
-  `connect-src 'self' ${backendOrigin} https://maps.googleapis.com`,
+  // Hot reloading talks to the dev server over a WebSocket, which needs its own
+  // scheme allowance. Production has no such connection.
+  `connect-src 'self' ${backendOrigin} https://maps.googleapis.com${isDevelopment ? " ws://localhost:* ws://127.0.0.1:*" : ""}`,
   "manifest-src 'self'",
   // Local development serves the API over plain HTTP, so only force the upgrade
   // where everything is already behind TLS.
@@ -35,14 +39,18 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Loading the dev server through 127.0.0.1 instead of localhost otherwise trips
+  // Next's cross-origin guard and blocks its dev resources. Development only.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
     // Shared hosting has a strict process limit. Keep page-data collection to one worker.
     cpus: 1,
     workerThreads: true,
-    // Images are limited to 2 MB each in the upload service. Allow a small gallery
-    // to reach its Server Action without exposing an unnecessarily large payload.
+    // Gallery images travel to their Server Action as base64, which costs a third
+    // more than the raw bytes. This budget matches the 5 MB per-image limit and
+    // the batch guard in lib/uploads/product-images.ts.
     serverActions: {
-      bodySizeLimit: "24mb"
+      bodySizeLimit: "32mb"
     }
   },
   images: {

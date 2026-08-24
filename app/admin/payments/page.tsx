@@ -4,6 +4,7 @@ import type { Order, PaymentMethod, PaymentStatus } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch, toQueryString } from "@/lib/api/client";
 import { formatMoney } from "@/lib/money";
+import { paymentMethodLabel } from "@/lib/payments/labels";
 import { updateOrderAction } from "../orders/actions";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,7 @@ export default async function AdminPaymentsPage({
         {orders.map((order) => (
           <div className="admin-table-row payment-row" key={order.id}>
             <strong>{order.orderNumber}</strong>
-            <span>{order.paymentMethod}</span>
+            <span>{paymentMethodLabel(order.paymentMethod)}</span>
             <span>{formatMoney(order.totalCents)}</span>
             <OrderStatusControls action={updateOrderAction.bind(null, order.id)} initialPaymentStatus={order.paymentStatus} initialStatus={order.status} />
           </div>

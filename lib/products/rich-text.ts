@@ -12,6 +12,39 @@ const richTextOptions: sanitizeHtml.IOptions = {
   },
 };
 
+/**
+ * Rewrites the block wrappers a contentEditable produces into paragraphs.
+ *
+ * Pressing Enter in the admin editor emits <div> in Chrome and Safari. Those
+ * tags are not on the allow list, and sanitize-html drops a disallowed tag while
+ * keeping its text, so every paragraph an admin typed used to arrive at the
+ * storefront concatenated into a single run-on line.
+ *
+ * This only rewrites div wrappers; the result is still sanitized afterwards, so
+ * it cannot be used to smuggle markup past the allow list.
+ */
+function paragraphsFromBlocks(input: string) {
+  let output = input.replace(/<div\b[^>]*>/gi, "<p>").replace(/<\/div\s*>/gi, "</p>");
+
+  // Nested wrappers would otherwise become nested paragraphs, which is invalid.
+  let previous: string;
+  do {
+    previous = output;
+    output = output.replace(/<p>\s*<p>/gi, "<p>").replace(/<\/p>\s*<\/p>/gi, "</p>");
+  } while (output !== previous);
+
+  return output;
+}
+
+/**
+ * Editors leave behind empty blocks - a trailing paragraph after the last list,
+ * or a paragraph holding nothing but a line break. They render as stray gaps on
+ * the product page and accumulate with every save.
+ */
+function dropEmptyParagraphs(html: string) {
+  return html.replace(/<p>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi, "");
+}
+
 export function sanitizeRichText(value: string | null | undefined) {
   const input = String(value ?? "").trim();
   if (!input) return "";
@@ -24,7 +57,7 @@ export function sanitizeRichText(value: string | null | undefined) {
       .join("");
   }
 
-  return sanitizeHtml(input, richTextOptions);
+  return dropEmptyParagraphs(sanitizeHtml(paragraphsFromBlocks(input), richTextOptions));
 }
 
 export function richTextToPlainText(value: string | null | undefined) {

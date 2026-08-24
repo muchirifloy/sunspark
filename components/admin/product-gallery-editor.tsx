@@ -149,7 +149,7 @@ export function ProductGalleryEditor({ images, productName }: { images: CurrentI
           </select>
         </div>
       ) : null}
-      <p className="gallery-help">JPG, PNG or WebP · maximum 2 MB each · up to 8 images</p>
+      <p className="gallery-help">JPG, PNG or WebP · maximum 5 MB each · up to 8 images · large photos are resized automatically</p>
     </div>
   );
 }

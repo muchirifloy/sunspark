@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { ProductForm } from "@/components/admin/product-form";
+import { mergeProductDescriptions } from "@/lib/products/rich-text";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
 import type { Category, Product } from "@/lib/types";
@@ -34,7 +35,12 @@ export default async function EditProductPage({
     <AdminLayout title="Edit Product" subtitle={product.name}>
       <div className="admin-shell product-editor-shell">
         {query?.error && messages[query.error] ? <p className="admin-feedback error" role="alert">{query.message ?? messages[query.error]}</p> : null}
-        <ProductForm action={updateProductAction.bind(null, product.id)} categories={categories} product={product} />
+        <ProductForm
+          action={updateProductAction.bind(null, product.id)}
+          categories={categories}
+          descriptionHtml={mergeProductDescriptions(product.shortDescription, product.description)}
+          product={product}
+        />
       </div>
     </AdminLayout>
   );

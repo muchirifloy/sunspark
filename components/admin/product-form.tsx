@@ -7,7 +7,6 @@ import { ProductGalleryEditor } from "@/components/admin/product-gallery-editor"
 import { AdminRichTextEditor } from "@/components/admin/admin-rich-text-editor";
 import type { ActionResult } from "@/lib/actions/result";
 import { publicImageUrl } from "@/lib/products/images";
-import { mergeProductDescriptions } from "@/lib/products/rich-text";
 import type { Category, Product, ProductImage } from "@/lib/types";
 
 type ProductWithImages = Product & { images: ProductImage[] };
@@ -18,9 +17,11 @@ const sellingUnits = [
   ["LITRE", "Litre"], ["KILOGRAM", "Kilogram"],
 ] as const;
 
-export function ProductForm({ action, categories, product }: {
+export function ProductForm({ action, categories, descriptionHtml = "", product }: {
   action: (formData: FormData) => Promise<ActionResult>;
   categories: Category[];
+  /** Pre-merged and sanitized on the server so sanitize-html stays out of the client bundle. */
+  descriptionHtml?: string;
   product?: ProductWithImages | null;
 }) {
   const router = useRouter();
@@ -74,7 +75,7 @@ export function ProductForm({ action, categories, product }: {
           </label>
           <label>Brand <input name="brand" defaultValue={product?.brand ?? ""} placeholder="Optional" /></label>
         </div>
-        <label>Full description <AdminRichTextEditor ariaLabel="Full product description" initialHtml={mergeProductDescriptions(product?.shortDescription, product?.description)} name="description" /></label>
+        <label>Full description <AdminRichTextEditor ariaLabel="Full product description" initialHtml={descriptionHtml} name="description" /></label>
       </section>
 
       <div className="editor-column editor-commerce-column">

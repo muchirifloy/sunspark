@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Montserrat } from "next/font/google";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { CampaignModal } from "@/components/site/campaign-modal";
 import { SupportChat } from "@/components/site/support-chat";
 import { jsonLdHtml } from "@/lib/json-ld";
+import { isAdminPath, pathnameHeader } from "@/lib/request-context";
 import { getCampaigns } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
 import "./globals.css";
@@ -56,7 +58,12 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const campaigns = await getCampaigns();
+  // Admin runs inside this same root layout, so the storefront chrome is opted
+  // out per-route rather than rendered and hidden with CSS. Skipping it also
+  // skips its data: the cart, the category list (twice) and the campaign list.
+  const requestHeaders = await headers();
+  const isAdminRoute = isAdminPath(requestHeaders.get(pathnameHeader));
+  const campaigns = isAdminRoute ? [] : await getCampaigns();
   const businessSchema = {
     "@context": "https://schema.org",
     "@type": "Store",
@@ -80,11 +87,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           dangerouslySetInnerHTML={{ __html: jsonLdHtml(businessSchema) }}
           type="application/ld+json"
         />
-        <Header />
+        {isAdminRoute ? null : <Header />}
         <main>{children}</main>
-        <Footer />
-        <CampaignModal campaigns={campaigns} />
-        <SupportChat />
+        {isAdminRoute ? null : (
+          <>
+            <Footer />
+            <CampaignModal campaigns={campaigns} />
+            <SupportChat />
+          </>
+        )}
       </body>
     </html>
   );

@@ -1966,7 +1966,14 @@ summary {
   stroke-width: 1.7;
 }
 
-.admin-sidebar > nav {
+.admin-nav-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-nav-panel > nav {
   flex: 1;
   align-content: start;
   min-height: 0;
@@ -1977,8 +1984,8 @@ summary {
   scrollbar-width: thin;
 }
 
-.admin-sidebar > nav::-webkit-scrollbar { width: 6px; }
-.admin-sidebar > nav::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255, 255, 255, 0.28); }
+.admin-nav-panel > nav::-webkit-scrollbar { width: 6px; }
+.admin-nav-panel > nav::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(255, 255, 255, 0.28); }
 
 .admin-mobile-menu {
   display: none;
@@ -2006,16 +2013,6 @@ summary {
   height: 2px;
   border-radius: 999px;
   background: #fff;
-}
-
-.admin-mobile-menu nav {
-  display: grid;
-  gap: 6px;
-  padding-top: 12px;
-}
-
-.admin-mobile-panel {
-  display: contents;
 }
 
 .admin-logout {
@@ -3451,39 +3448,69 @@ summary:focus-visible {
 .editor-save-summary button { width: 100%; min-height: 38px; }
 
 .rich-text-editor {
-  overflow: hidden;
+  position: relative;
   border: 1px solid #d8dee8;
   border-radius: 5px;
   background: #fff;
 }
 
+/* Compact and sticky: the description can run long, so the controls stay in
+   reach instead of scrolling away above the text. */
 .rich-text-toolbar {
   display: flex;
+  position: sticky;
+  z-index: 5;
+  top: 0;
   align-items: center;
-  gap: 3px;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 2px;
   border-bottom: 1px solid #e4e8ef;
+  border-radius: 5px 5px 0 0;
   background: #fbfcfe;
-  padding: 5px;
+  padding: 4px 5px;
 }
 
-.rich-text-toolbar select { width: 92px; min-height: 30px; border: 0; background: transparent; padding: 3px 5px; }
-.rich-text-toolbar > span { width: 1px; align-self: stretch; background: #e1e6ed; }
+.rich-text-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rich-text-toolbar-group + .rich-text-toolbar-group {
+  margin-left: 3px;
+  border-left: 1px solid #e1e6ed;
+  padding-left: 5px;
+}
 
 .rich-text-toolbar button {
+  display: inline-flex;
   flex: 0 0 auto;
-  min-width: 29px;
-  min-height: 29px;
+  min-width: 26px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: #344054;
   cursor: pointer;
-  padding: 4px 7px;
+  padding: 2px 6px;
   font-size: 11px;
+  line-height: 1;
 }
 
-.rich-text-toolbar button:hover { background: #eaf2fb; color: var(--brand); }
+.rich-text-toolbar button:hover:not(:disabled) { background: #eaf2fb; color: var(--brand); }
+.rich-text-toolbar button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.rich-text-toolbar button.is-active {
+  background: rgba(14, 82, 164, 0.12);
+  color: var(--brand);
+}
+
+.rich-text-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .rich-text-content {
   min-height: 210px;
@@ -3497,26 +3524,27 @@ summary:focus-visible {
 
 .rich-text-content:focus { box-shadow: inset 0 0 0 2px rgba(14, 82, 164, 0.14); }
 .rich-text-content p { margin: 0 0 9px; }
-.rich-text-content ul, .rich-text-content ol { padding-left: 22px; }
+.rich-text-content h2 { margin: 14px 0 7px; font-size: 15px; }
+.rich-text-content h3 { margin: 12px 0 6px; font-size: 13px; }
+.rich-text-content ul, .rich-text-content ol { margin: 0 0 9px; padding-left: 22px; }
+.rich-text-content li { margin-bottom: 3px; }
+.rich-text-content a { color: var(--brand); text-decoration: underline; }
 
-.rich-text-link-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 5px;
-  border-bottom: 1px solid #e4e8ef;
-  padding: 6px;
+.rich-text-content blockquote {
+  margin: 0 0 9px;
+  border-left: 3px solid #dbe3ec;
+  padding-left: 10px;
+  color: #4b5565;
 }
 
-.rich-text-link-details {
-  display: block !important;
-  font-size: 10px;
+/* TipTap marks the empty document so the field does not look broken. */
+.rich-text-content p.is-editor-empty:first-child::before {
+  content: "Describe the product, its rating, and what is in the box.";
+  float: left;
+  height: 0;
+  color: #98a2b3;
+  pointer-events: none;
 }
-
-.rich-text-link-details:not([open]) > :not(summary) { display: none; }
-.rich-text-link-details summary { display: none; }
-
-.rich-text-link-row input { min-height: 32px; }
-.rich-text-link-row button { border: 1px solid #d8dee8; border-radius: 4px; background: #fff; font-size: 10px; }
 
 .product-options-card { grid-column: 1 / -1; }
 
@@ -3525,6 +3553,10 @@ summary:focus-visible {
 .product-rich-description > :last-child { margin-bottom: 0; }
 .product-rich-description a { color: var(--brand); text-decoration: underline; }
 .product-rich-description li + li { margin-top: 5px; }
+/* The editor stores list item content wrapped in a paragraph, which would
+   otherwise inherit paragraph spacing and space every bullet apart. */
+.product-rich-description li > p { margin: 0; }
+.rich-text-content li > p { margin: 0; }
 
 @media (max-width: 1450px) and (min-width: 1101px) {
   .product-editor { grid-template-columns: minmax(230px, 0.8fr) minmax(360px, 1.25fr) minmax(240px, 0.85fr); }
@@ -3570,10 +3602,7 @@ summary:focus-visible {
   .editor-command-bar nav { grid-template-columns: 1fr 1fr; }
   .editor-command-bar nav .primary-btn { grid-column: 1 / -1; }
   .gallery-thumbnails { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .rich-text-toolbar { padding-bottom: 7px; }
   .rich-text-content { min-height: 180px; }
-  .rich-text-link-row { grid-template-columns: 1fr 1fr; }
-  .rich-text-link-row input { grid-column: 1 / -1; }
   .product-status-options { gap: 5px; }
   .product-status-options .form-switch { justify-content: center; gap: 5px; padding: 8px 5px; }
   .product-status-options .form-switch input { flex: 0 0 auto; width: 16px; min-height: 16px; }
@@ -3591,17 +3620,6 @@ summary:focus-visible {
 .check-label input {
   width: 18px;
   min-height: 18px;
-}
-
-.admin-mobile-logout button {
-  width: 100%;
-  min-height: 40px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 6px;
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  font-weight: 700;
 }
 
 .form-section {
@@ -4680,15 +4698,9 @@ summary:focus-visible {
     font-size: 10px;
   }
 
-  .admin-sidebar > nav,
-  .admin-sidebar > .admin-logout {
-    display: none;
-  }
-
   .admin-mobile-menu {
     display: block;
     justify-self: end;
-    position: relative;
   }
 
   .admin-mobile-menu[open] {
@@ -4699,13 +4711,19 @@ summary:focus-visible {
     margin-left: auto;
   }
 
-  .admin-mobile-panel {
+  .admin-nav-panel {
     position: absolute;
-    right: 0;
+    /* Matches the sidebar's horizontal padding so the dropdown lines up with
+       the toggle instead of running to the viewport edge. */
+    right: 14px;
     top: calc(100% + 8px);
     z-index: 40;
     width: min(292px, calc(100vw - 24px));
-    display: grid;
+    /* A long menu must not run off the bottom of a short phone. */
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: none;
     gap: 4px;
     border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 10px;
@@ -4714,13 +4732,21 @@ summary:focus-visible {
     box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
   }
 
-  .admin-mobile-menu nav {
-    grid-template-columns: 1fr;
-    padding-top: 0;
+  .admin-mobile-menu[open] ~ .admin-nav-panel {
+    display: grid;
   }
 
-  .admin-mobile-logout {
+  .admin-nav-panel > nav {
+    flex: none;
+    grid-template-columns: 1fr;
+    padding-top: 0;
+    overflow: visible;
+  }
+
+  .admin-logout {
     margin: 6px 0 0;
+    border-top: 0;
+    padding: 0;
   }
 
   .admin-topbar {
@@ -4871,11 +4897,7 @@ summary:focus-visible {
     min-height: 0;
   }
 
-  .admin-sidebar > nav {
-    display: none;
-  }
-
-  .admin-mobile-menu nav {
+  .admin-nav-panel > nav {
     grid-template-columns: 1fr;
   }
 
@@ -5375,5 +5397,94 @@ summary:focus-visible {
 
   .gallery-thumbs button {
     width: 68px;
+  }
+}
+
+/* Admin route loading skeleton. Mirrors the admin shell so the sidebar and
+   topbar do not appear to disappear while a dynamic admin page is fetching. */
+.admin-skeleton-brand,
+.admin-skeleton-nav span,
+.admin-skeleton-heading span,
+.admin-skeleton-heading strong,
+.admin-skeleton-cards span,
+.admin-skeleton-table span {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #edf2f7 0%, #ffffff 48%, #edf2f7 100%);
+  background-size: 220% 100%;
+  animation: loading-sheen 1.2s ease-in-out infinite;
+}
+
+.admin-skeleton-sidebar {
+  gap: 18px;
+}
+
+.admin-skeleton-brand {
+  width: 128px;
+  height: 30px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.34) 48%, rgba(255, 255, 255, 0.16) 100%);
+  background-size: 220% 100%;
+}
+
+.admin-skeleton-nav {
+  display: grid;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.admin-skeleton-nav span {
+  height: 34px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.26) 48%, rgba(255, 255, 255, 0.1) 100%);
+  background-size: 220% 100%;
+}
+
+.admin-skeleton-heading {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-skeleton-heading span {
+  width: 72px;
+  height: 12px;
+}
+
+.admin-skeleton-heading strong {
+  width: min(60vw, 280px);
+  height: 26px;
+}
+
+.admin-skeleton-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.admin-skeleton-cards span {
+  height: 104px;
+}
+
+.admin-skeleton-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.admin-skeleton-table span {
+  height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-skeleton-brand,
+  .admin-skeleton-nav span,
+  .admin-skeleton-heading span,
+  .admin-skeleton-heading strong,
+  .admin-skeleton-cards span,
+  .admin-skeleton-table span,
+  .product-loading-media,
+  .product-loading-summary span,
+  .product-loading-summary strong,
+  .product-loading-summary p,
+  .product-loading-summary div {
+    animation: none;
   }
 }

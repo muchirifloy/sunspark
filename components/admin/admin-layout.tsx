@@ -1,6 +1,6 @@
 import { Inter } from "next/font/google";
 import Link from "next/link";
-import { Suspense, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { adminLogoutAction } from "@/app/admin/logout-action";
 import { AdminBackButton } from "@/components/admin/admin-back-button";
 import { AdminNavigation, type AdminNavItem } from "@/components/admin/admin-navigation";
@@ -59,27 +59,25 @@ export async function AdminLayout({
           <span>Sunspark</span>
           <small>Admin</small>
         </Link>
+        {/* The menu is only a toggle. The panel it controls is a sibling rather
+            than a child so one nav can serve both layouts: on desktop the panel
+            sits in the sidebar flow, on mobile CSS turns it into a dropdown
+            revealed by `[open] ~ .admin-nav-panel`. */}
         <details className="admin-mobile-menu">
           <summary aria-label="Open admin menu">
             <span aria-hidden="true"></span>
             <span aria-hidden="true"></span>
             <span aria-hidden="true"></span>
           </summary>
-          <div className="admin-mobile-panel">
-            <nav aria-label="Admin mobile navigation">
-              <Suspense fallback={null}><AdminNavigation links={links} pendingOrderCount={pendingOrderCount} /></Suspense>
-            </nav>
-            <form action={adminLogoutAction} className="admin-mobile-logout">
-              <button type="submit">Log out</button>
-            </form>
-          </div>
         </details>
-        <nav aria-label="Admin navigation">
-          <Suspense fallback={null}><AdminNavigation links={links} pendingOrderCount={pendingOrderCount} /></Suspense>
-        </nav>
-        <form action={adminLogoutAction} className="admin-logout">
-          <button type="submit">Log out</button>
-        </form>
+        <div className="admin-nav-panel">
+          <nav aria-label="Admin navigation">
+            <AdminNavigation links={links} pendingOrderCount={pendingOrderCount} />
+          </nav>
+          <form action={adminLogoutAction} className="admin-logout">
+            <button type="submit">Log out</button>
+          </form>
+        </div>
       </aside>
       <div className="admin-main">
         <header className="admin-topbar">

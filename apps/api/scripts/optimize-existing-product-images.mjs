@@ -29,6 +29,10 @@ for (const entry of candidates) {
   if (files.length === limit) break;
 }
 
+// Mirrors IMAGE_MAX_DIMENSION in src/image-optimization.ts so a batch run and a
+// fresh upload produce the same result.
+const maxDimension = Math.max(Number(process.env.IMAGE_MAX_DIMENSION ?? "1600") || 1600, 200);
+
 let optimized = 0;
 for (const entry of files) {
   const source = path.join(productDirectory, entry.name);
@@ -45,7 +49,14 @@ for (const entry of files) {
       continue;
     }
 
+    const longestEdge = Math.max(metadata.width ?? 0, metadata.height ?? 0);
+    const needsResize = longestEdge > maxDimension;
+
     image.rotate();
+    if (needsResize) {
+      image.resize({ width: maxDimension, height: maxDimension, fit: "inside", withoutEnlargement: true });
+    }
+
     if (extension === ".png") await image.png({ compressionLevel: 9, adaptiveFiltering: true }).toFile(temporary);
     else if (extension === ".webp") await image.webp({ quality: 88, effort: 4 }).toFile(temporary);
     else await image.jpeg({ quality: 88, progressive: true, mozjpeg: true }).toFile(temporary);
@@ -53,7 +64,9 @@ for (const entry of files) {
     const [sourceInfo, optimizedInfo] = await Promise.all([stat(source), stat(temporary)]);
     await copyFile(source, backup, 0);
 
-    if (optimizedInfo.size < sourceInfo.size) {
+    // A resized file is kept even when the re-encode is not smaller, otherwise
+    // the oversized dimensions would be put straight back.
+    if (needsResize || optimizedInfo.size < sourceInfo.size) {
       await rename(temporary, source);
       optimized += 1;
     } else {

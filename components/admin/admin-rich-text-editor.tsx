@@ -1,120 +1,189 @@
 "use client";
 
-import { useRef } from "react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
-type EditorCommand = "bold" | "italic" | "underline" | "insertUnorderedList" | "insertOrderedList" | "undo" | "redo";
+/**
+ * Product description editor.
+ *
+ * The extension set is deliberately narrowed to the tags sanitizeRichText
+ * allows, so whatever an admin sees here is exactly what the storefront renders.
+ * Anything outside that list (strike, code, code blocks, rules, h1/h4-h6) is
+ * turned off rather than being silently stripped after saving.
+ */
+const editorExtensions = [
+  StarterKit.configure({
+    heading: { levels: [2, 3] },
+    strike: false,
+    code: false,
+    codeBlock: false,
+    horizontalRule: false,
+    link: {
+      openOnClick: false,
+      autolink: true,
+      protocols: ["http", "https", "mailto", "tel"],
+      HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" }
+    }
+  })
+];
+
+function ToolbarButton({
+  active,
+  children,
+  disabled,
+  label,
+  onClick
+}: {
+  active?: boolean;
+  children: ReactNode;
+  disabled?: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      aria-pressed={active ? true : undefined}
+      className={active ? "is-active" : undefined}
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Toolbar({ editor }: { editor: Editor }) {
+  const setLink = useCallback(() => {
+    const previous = editor.getAttributes("link").href as string | undefined;
+    const input = window.prompt("Link URL", previous ?? "https://");
+
+    if (input === null) return;
+
+    const url = input.trim();
+
+    if (!url) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+      return;
+    }
+
+    const href = /^(https?:|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
+    editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+  }, [editor]);
+
+  return (
+    <div className="rich-text-toolbar" role="toolbar" aria-label="Text formatting">
+      <div className="rich-text-toolbar-group">
+        <ToolbarButton active={editor.isActive("bold")} label="Bold" onClick={() => editor.chain().focus().toggleBold().run()}>
+          <strong>B</strong>
+        </ToolbarButton>
+        <ToolbarButton active={editor.isActive("italic")} label="Italic" onClick={() => editor.chain().focus().toggleItalic().run()}>
+          <em>I</em>
+        </ToolbarButton>
+        <ToolbarButton active={editor.isActive("underline")} label="Underline" onClick={() => editor.chain().focus().toggleUnderline().run()}>
+          <u>U</u>
+        </ToolbarButton>
+      </div>
+
+      <div className="rich-text-toolbar-group">
+        <ToolbarButton active={editor.isActive("paragraph")} label="Normal text" onClick={() => editor.chain().focus().setParagraph().run()}>
+          P
+        </ToolbarButton>
+        <ToolbarButton
+          active={editor.isActive("heading", { level: 2 })}
+          label="Heading"
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        >
+          H2
+        </ToolbarButton>
+        <ToolbarButton
+          active={editor.isActive("heading", { level: 3 })}
+          label="Subheading"
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+        >
+          H3
+        </ToolbarButton>
+      </div>
+
+      <div className="rich-text-toolbar-group">
+        <ToolbarButton active={editor.isActive("bulletList")} label="Bulleted list" onClick={() => editor.chain().focus().toggleBulletList().run()}>
+          &bull;&#8203;&mdash;
+        </ToolbarButton>
+        <ToolbarButton active={editor.isActive("orderedList")} label="Numbered list" onClick={() => editor.chain().focus().toggleOrderedList().run()}>
+          1.
+        </ToolbarButton>
+        <ToolbarButton active={editor.isActive("blockquote")} label="Quote" onClick={() => editor.chain().focus().toggleBlockquote().run()}>
+          &ldquo;
+        </ToolbarButton>
+      </div>
+
+      <div className="rich-text-toolbar-group">
+        <ToolbarButton active={editor.isActive("link")} label="Add or edit link" onClick={setLink}>
+          Link
+        </ToolbarButton>
+        <ToolbarButton
+          disabled={!editor.isActive("link")}
+          label="Remove link"
+          onClick={() => editor.chain().focus().extendMarkRange("link").unsetLink().run()}
+        >
+          Unlink
+        </ToolbarButton>
+      </div>
+
+      <div className="rich-text-toolbar-group">
+        <ToolbarButton disabled={!editor.can().undo()} label="Undo" onClick={() => editor.chain().focus().undo().run()}>
+          &#8630;
+        </ToolbarButton>
+        <ToolbarButton disabled={!editor.can().redo()} label="Redo" onClick={() => editor.chain().focus().redo().run()}>
+          &#8631;
+        </ToolbarButton>
+      </div>
+    </div>
+  );
+}
 
 export function AdminRichTextEditor({
   ariaLabel = "Rich text content",
   initialHtml,
-  name,
+  name
 }: {
   ariaLabel?: string;
   initialHtml: string;
   name: string;
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const linkRef = useRef<HTMLInputElement>(null);
-  const savedRangeRef = useRef<Range | null>(null);
+  const [value, setValue] = useState(initialHtml);
 
-  function syncValue() {
-    if (inputRef.current) inputRef.current.value = editorRef.current?.innerHTML ?? "";
-  }
-
-  function saveSelection() {
-    const selection = window.getSelection();
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
-    if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
-      savedRangeRef.current = range.cloneRange();
+  const editor = useEditor({
+    extensions: editorExtensions,
+    content: initialHtml,
+    // Next renders this on the server first; deferring the first paint to the
+    // client is what TipTap requires to avoid a hydration mismatch.
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        "aria-label": ariaLabel,
+        class: "rich-text-content",
+        role: "textbox"
+      }
+    },
+    onUpdate: ({ editor: instance }) => {
+      // An "empty" document still serialises to <p></p>, which would otherwise
+      // be stored as a description that looks blank but is not.
+      const next = instance.isEmpty ? "" : instance.getHTML();
+      setValue(next);
+      if (inputRef.current) inputRef.current.value = next;
     }
-  }
-
-  function restoreSelection() {
-    const range = savedRangeRef.current;
-    if (!range) return;
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }
-
-  function run(command: EditorCommand) {
-    editorRef.current?.focus();
-    restoreSelection();
-    document.execCommand(command);
-    saveSelection();
-    syncValue();
-  }
-
-  function formatBlock(tag: string) {
-    editorRef.current?.focus();
-    restoreSelection();
-    document.execCommand("formatBlock", false, tag);
-    saveSelection();
-    syncValue();
-  }
-
-  function openLinkEditor() {
-    saveSelection();
-    if (detailsRef.current) detailsRef.current.open = true;
-    window.setTimeout(() => linkRef.current?.focus(), 0);
-  }
-
-  function addLink() {
-    const url = linkRef.current?.value.trim() ?? "";
-    if (!url) return;
-    editorRef.current?.focus();
-    restoreSelection();
-    document.execCommand("createLink", false, /^(https?:|mailto:|tel:)/i.test(url) ? url : `https://${url}`);
-    if (linkRef.current) linkRef.current.value = "";
-    if (detailsRef.current) detailsRef.current.open = false;
-    saveSelection();
-    syncValue();
-  }
+  });
 
   return (
     <div className="rich-text-editor">
-      <input defaultValue={initialHtml} name={name} ref={inputRef} type="hidden" />
-      <div className="rich-text-toolbar" role="toolbar" aria-label="Text formatting">
-        <select aria-label="Text style" defaultValue="p" onMouseDown={saveSelection} onChange={(event) => formatBlock(event.target.value)}>
-          <option value="p">Normal</option>
-          <option value="h2">Heading</option>
-          <option value="h3">Subheading</option>
-          <option value="blockquote">Quote</option>
-        </select>
-        <span aria-hidden="true" />
-        <button aria-label="Bold" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("bold")} type="button"><strong>B</strong></button>
-        <button aria-label="Italic" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("italic")} type="button"><em>I</em></button>
-        <button aria-label="Underline" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("underline")} type="button"><u>U</u></button>
-        <button aria-label="Bulleted list" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("insertUnorderedList")} type="button">• List</button>
-        <button aria-label="Numbered list" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("insertOrderedList")} type="button">1. List</button>
-        <button aria-label="Add link" onMouseDown={(event) => event.preventDefault()} onClick={openLinkEditor} type="button">Link</button>
-        <button aria-label="Undo" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("undo")} type="button">↶</button>
-        <button aria-label="Redo" onMouseDown={(event) => { event.preventDefault(); saveSelection(); }} onClick={() => run("redo")} type="button">↷</button>
-      </div>
-      <details className="rich-text-link-details" ref={detailsRef}>
-        <summary>Add a link</summary>
-        <div className="rich-text-link-row">
-          <input aria-label="Link URL" placeholder="https://example.com" ref={linkRef} type="url" />
-          <button onClick={addLink} type="button">Add link</button>
-          <button onClick={() => { if (detailsRef.current) detailsRef.current.open = false; }} type="button">Cancel</button>
-        </div>
-      </details>
-      <div
-        aria-label={ariaLabel}
-        className="rich-text-content"
-        contentEditable
-        dangerouslySetInnerHTML={{ __html: initialHtml }}
-        onBlur={syncValue}
-        onInput={syncValue}
-        onKeyUp={saveSelection}
-        onMouseUp={saveSelection}
-        ref={editorRef}
-        role="textbox"
-        suppressContentEditableWarning
-        tabIndex={0}
-      />
+      <input name={name} ref={inputRef} type="hidden" value={value} readOnly />
+      {editor ? <Toolbar editor={editor} /> : <div className="rich-text-toolbar" aria-hidden="true" />}
+      <EditorContent editor={editor} />
     </div>
   );
 }

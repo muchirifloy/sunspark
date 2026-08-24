@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { ProductForm } from "@/components/admin/product-form";
+import { mergeProductDescriptions } from "@/lib/products/rich-text";
 import type { Category, Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,12 @@ export default function ProductEditorPreviewPage() {
   return (
     <AdminLayout pendingOrderCountOverride={12} title="Edit Product" subtitle="Local design preview · saving is disabled">
       <div className="admin-shell product-editor-shell">
-        <ProductForm action={previewOnlyAction} categories={[category]} product={product} />
+        <ProductForm
+          action={previewOnlyAction}
+          categories={[category]}
+          descriptionHtml={mergeProductDescriptions(product.shortDescription, product.description)}
+          product={product}
+        />
       </div>
     </AdminLayout>
   );

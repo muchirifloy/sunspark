@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatMoney } from "@/lib/money";
+import { siteConfig } from "@/lib/site-config";
 
 export type ChartPeriod = "days" | "weeks" | "months";
 export type SalesBucket = { bucket: string; label: string; orders: number; salesCents: number; profitCents: number };
@@ -70,7 +71,7 @@ function SalesLineChart({
 
   return (
     <div className="dashboard-chart-wrap">
-      <div className="dashboard-chart-legend"><span className="sales">Sales (KES)</span><span className="orders">Orders</span><small>Hover or tap a point for details</small></div>
+      <div className="dashboard-chart-legend"><span className="sales">Sales ({siteConfig.currency})</span><span className="orders">Orders</span><small>Hover or tap a point for details</small></div>
       <svg aria-label="Sales and orders performance chart" className="dashboard-line-chart" role="img" viewBox={`0 0 ${width} ${height}`}>
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = plot.bottom - ratio * (plot.bottom - plot.top);

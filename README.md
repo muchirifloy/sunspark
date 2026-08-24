@@ -68,7 +68,7 @@ Product images upload to:
 public/uploads/products
 ```
 
-Each uploaded image must be JPEG, PNG, or WebP and below 2MB. Uploads are optimized before saving only when the same format produces a smaller file; failed or larger optimizations retain the original. SQL stores only image URLs, not binary image data.
+Each uploaded image must be JPEG, PNG, or WebP and below 5MB. Uploads are downscaled so the longest edge is at most `IMAGE_MAX_DIMENSION` (default 1600px, which still covers a 2x display of the largest storefront layout) and then re-encoded. Images already within that size are only re-compressed, and are kept as-is when compression does not help. Animated images are retained unchanged. SQL stores only image URLs, not binary image data.
 
 On hosting, make sure the uploads directory is writable and backed up. For larger production scale, move uploads to object storage and keep the same URL-based database design.
 

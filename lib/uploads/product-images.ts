@@ -3,7 +3,18 @@ import "server-only";
 import { apiFetch } from "@/lib/api/client";
 
 const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
-const maxBytes = 2 * 1024 * 1024;
+// Phone and supplier photos routinely exceed 2 MB, which meant admins could not
+// upload them at all. The backend now downscales to IMAGE_MAX_DIMENSION before
+// storing, so a larger upload still lands well under a megabyte on disk.
+const maxUploadMb = 5;
+const maxBytes = maxUploadMb * 1024 * 1024;
+
+// Every image in a gallery save travels in one base64 Server Action body, and
+// base64 costs a third more than the raw bytes. Checking the whole batch here
+// turns "request body too large" into something an admin can act on.
+const serverActionBodyMb = 32;
+const base64Overhead = 4 / 3;
+const maxBatchBytes = Math.floor((serverActionBodyMb * 1024 * 1024) / base64Overhead) - 1024 * 1024;
 
 export type SavedProductImage = {
   url: string;
@@ -13,15 +24,21 @@ export type SavedProductImage = {
 export function getImageUploadError(files: File[]) {
   const invalidFile = files.find((file) => file.size && (!allowedTypes.has(file.type) || file.size > maxBytes));
 
-  if (!invalidFile) {
-    return null;
+  if (invalidFile) {
+    if (!allowedTypes.has(invalidFile.type)) {
+      return "Images must be JPEG, PNG, or WebP.";
+    }
+
+    return `Each image must be smaller than ${maxUploadMb} MB.`;
   }
 
-  if (!allowedTypes.has(invalidFile.type)) {
-    return "Images must be JPEG, PNG, or WebP.";
+  const batchBytes = files.reduce((total, file) => total + (file.size || 0), 0);
+
+  if (batchBytes > maxBatchBytes) {
+    return "These images are too large to upload together. Add them in smaller batches.";
   }
 
-  return "Each image must be smaller than 2 MB.";
+  return null;
 }
 
 function safeExtension(file: File) {

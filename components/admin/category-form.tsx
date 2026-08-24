@@ -36,7 +36,7 @@ export function CategoryForm({
         <label className="category-image-upload">
           <span>{isEditing ? "Add more category images" : "Upload category images"}</span>
           <input accept="image/jpeg,image/png,image/webp" multiple name="images" type="file" />
-          <small>JPEG, PNG, or WebP. Each image must be below 2 MB.</small>
+          <small>JPEG, PNG, or WebP. Each image must be below 5 MB. Large photos are resized automatically.</small>
         </label>
         {category?.images.length ? (
           <div className="admin-image-grid category-image-grid">

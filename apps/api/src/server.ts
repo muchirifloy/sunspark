@@ -386,6 +386,11 @@ function mapCampaign(row: CampaignRow) {
   };
 }
 
+// Uploads are downscaled to IMAGE_MAX_DIMENSION before they are written, so a
+// larger incoming file does not mean a larger stored one.
+const maxUploadMb = 5;
+const maxUploadBytes = maxUploadMb * 1024 * 1024;
+
 const uploadContentTypes = new Map([
   ["image/jpeg", "jpg"],
   ["image/jpg", "jpg"],
@@ -1316,8 +1321,8 @@ app.post("/admin/uploads", asyncRoute(async (request, response) => {
     if (!extension) throw new HttpError(400, "Images must be JPEG, PNG, or WebP.");
 
     const buffer = Buffer.from(file.dataBase64, "base64");
-    if (!buffer.byteLength || buffer.byteLength > 2 * 1024 * 1024) {
-      throw new HttpError(400, "Each image must be smaller than 2 MB.");
+    if (!buffer.byteLength || buffer.byteLength > maxUploadBytes) {
+      throw new HttpError(400, `Each image must be smaller than ${maxUploadMb} MB.`);
     }
 
     const optimized = await optimizeUploadedImage(buffer, file.type.toLowerCase());

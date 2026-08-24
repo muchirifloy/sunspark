@@ -5,6 +5,7 @@ import { SalesDocument } from "@/components/admin/sales-document";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
 import type { Order } from "@/lib/types";
+import { paymentMethodLabel } from "@/lib/payments/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function WalkInReceiptPage({ params }: { params: Promise<{ 
   await requireAdmin(`/admin/walk-in-sale/${id}/receipt`);
   const order = await apiFetch<Order>(`/admin/orders/${id}`).catch(() => null);
   if (!order) notFound();
-  const paymentLabel = order.paymentMethod === "CASH" ? "Cash" : order.paymentMethod === "MPESA" ? "M-Pesa" : "WhatsApp";
+  const paymentLabel = paymentMethodLabel(order.paymentMethod);
   const title = order.paymentStatus === "PAID" ? "Receipt" : "Invoice";
 
   return <AdminLayout title="Sale Complete" subtitle="The sale is recorded, stock is updated, and the document is ready.">

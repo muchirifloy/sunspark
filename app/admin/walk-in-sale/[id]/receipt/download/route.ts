@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
 import { createSalesDocumentPdf, salesDocumentFilename } from "@/lib/pdf/sales-document-pdf";
 import type { Order } from "@/lib/types";
+import { paymentMethodLabel } from "@/lib/payments/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   await requireAdmin(`/admin/walk-in-sale/${id}/receipt`);
   const order = await apiFetch<Order>(`/admin/orders/${id}`);
-  const paymentLabel = order.paymentMethod === "CASH" ? "Cash" : order.paymentMethod === "MPESA" ? "M-Pesa" : "WhatsApp";
+  const paymentLabel = paymentMethodLabel(order.paymentMethod);
   const kind = order.paymentStatus === "PAID" ? "RECEIPT" : "INVOICE";
   const number = order.invoice?.invoiceNumber ?? order.orderNumber;
   const pdf = createSalesDocumentPdf({
