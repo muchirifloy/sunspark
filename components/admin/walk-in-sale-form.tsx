@@ -3,15 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions/result";
-import type { ProductOption } from "@/lib/types";
-
-type SaleProduct = {
-  id: string;
-  name: string;
-  priceCents: number;
-  stockQuantity: number;
-  options: ProductOption[];
-};
+import type { SaleProduct } from "@/lib/types";
 
 type SaleLine = { productId: string; productOptionId?: string | null; quantity: number };
 

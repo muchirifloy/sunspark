@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { adminLogoutAction } from "@/app/admin/logout-action";
 import { AdminBackButton } from "@/components/admin/admin-back-button";
 import { AdminNavigation, type AdminNavItem } from "@/components/admin/admin-navigation";
-import { apiFetch } from "@/lib/api/client";
+import { getPendingOrderCount } from "@/lib/admin/queries";
 import { getSession } from "@/lib/auth/session";
 import { canManageCatalog } from "@/lib/auth/roles";
 import type { UserRole } from "@/lib/types";
@@ -16,6 +16,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const adminLinks: AdminNavItem[] = [
   { href: "/admin", label: "Dashboard", group: "Overview", icon: "dashboard" },
   { href: "/admin/orders", label: "Orders", group: "Sales", icon: "orders", showsOrderCount: true },
+  { href: "/admin/orders/past", label: "Past Orders", group: "Sales", icon: "documents" },
   { href: "/admin/customers", label: "Customers", group: "Sales", icon: "customers" },
   { href: "/admin/payments", label: "Payments", group: "Sales", icon: "payments" },
   { href: "/admin/invoices", label: "Invoices & Quotes", group: "Sales", icon: "documents" },
@@ -95,13 +96,4 @@ export async function AdminLayout({
       </div>
     </section>
   );
-}
-
-async function getPendingOrderCount() {
-  try {
-    const result = await apiFetch<{ count: number }>("/admin/orders/pending-count");
-    return Math.max(Number(result.count) || 0, 0);
-  } catch {
-    return 0;
-  }
 }

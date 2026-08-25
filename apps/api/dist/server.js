@@ -279,6 +279,10 @@ function mapCampaign(row) {
         updatedAt: row.updated_at
     };
 }
+// Uploads are downscaled to IMAGE_MAX_DIMENSION before they are written, so a
+// larger incoming file does not mean a larger stored one.
+const maxUploadMb = 5;
+const maxUploadBytes = maxUploadMb * 1024 * 1024;
 const uploadContentTypes = new Map([
     ["image/jpeg", "jpg"],
     ["image/jpg", "jpg"],
@@ -603,6 +607,39 @@ app.get("/products", asyncRoute(async (request, response) => {
         q: String(request.query.q ?? ""),
         category: String(request.query.category ?? ""),
         limit: Number(request.query.limit ?? 120)
+    }));
+}));
+// The walk-in / invoice / quotation product picker only renders a name, a price,
+// a stock count and the option list. Sending it through listProducts meant every
+// keystroke-ready catalogue load also carried description HTML, SEO columns, a
+// nested category object and every image row for all ~500 products, twice over:
+// once from here, and again when the page serialized it into the client form.
+app.get("/admin/sale-products", asyncRoute(async (request, response) => {
+    // Walk-in sales deduct stock immediately so they only ever offered in-stock
+    // products, while invoices and quotations could always reference anything in
+    // the catalogue. That difference is preserved here rather than flattened.
+    const inStockOnly = String(request.query.inStock ?? "") === "1";
+    // created_at / updated_at are selected because fallbackProductOption carries
+    // them onto the synthesized option for products that have no explicit ones.
+    const rows = await query(`SELECT p.id, p.name, p.price_cents, p.compare_at_cents, p.cost_cents, p.selling_unit,
+       p.stock_quantity, p.created_at, p.updated_at
+     FROM products p
+     WHERE p.is_active = TRUE${inStockOnly ? " AND p.stock_quantity > 0" : ""}
+     ORDER BY p.name ASC`);
+    const optionMap = await optionsForProducts(rows.map((row) => row.id));
+    response.json(rows.map((row) => {
+        const options = optionMap.get(row.id) ?? [];
+        const mapped = options.length
+            ? options.map(mapProductOption)
+            : [fallbackProductOption(row)];
+        const defaultOption = mapped.find((option) => option.isDefault) ?? mapped[0];
+        return {
+            id: row.id,
+            name: row.name,
+            priceCents: defaultOption.priceCents,
+            stockQuantity: row.stock_quantity,
+            options: mapped
+        };
     }));
 }));
 app.get("/admin/products", asyncRoute(async (request, response) => {
@@ -1007,8 +1044,8 @@ app.post("/admin/uploads", asyncRoute(async (request, response) => {
         if (!extension)
             throw new HttpError(400, "Images must be JPEG, PNG, or WebP.");
         const buffer = Buffer.from(file.dataBase64, "base64");
-        if (!buffer.byteLength || buffer.byteLength > 2 * 1024 * 1024) {
-            throw new HttpError(400, "Each image must be smaller than 2 MB.");
+        if (!buffer.byteLength || buffer.byteLength > maxUploadBytes) {
+            throw new HttpError(400, `Each image must be smaller than ${maxUploadMb} MB.`);
         }
         const optimized = await optimizeUploadedImage(buffer, file.type.toLowerCase());
         const filename = `${crypto.randomUUID()}-${safeUploadName(file.filename).replace(/\.[a-z0-9]+$/i, "")}.${extension}`;
@@ -1216,12 +1253,19 @@ function documentReference(kind) {
 }
 app.get("/admin/draft-documents", asyncRoute(async (request, response) => {
     const q = String(request.query.q ?? "").trim();
+    const group = String(request.query.group ?? "");
     const where = [];
     const values = [];
     if (q) {
         where.push("(reference LIKE ? OR customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ?)");
         values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
+    // DRAFT is the only state that still needs work: a finalized invoice has
+    // become an order and a cancelled one is history.
+    if (group === "active")
+        where.push("status = 'DRAFT'");
+    if (group === "past")
+        where.push("status IN ('COMPLETED', 'CANCELLED')");
     const documents = await query(`SELECT id, reference, kind, status, order_id AS orderId, customer_name AS customerName,
       customer_email AS customerEmail, customer_phone AS customerPhone, payment_method AS paymentMethod,
       subtotal_cents AS subtotalCents, total_cents AS totalCents, created_at AS createdAt, updated_at AS updatedAt
@@ -1689,6 +1733,7 @@ app.get("/admin/orders", asyncRoute(async (request, response) => {
     const status = String(request.query.status ?? "");
     const paymentStatus = String(request.query.paymentStatus ?? "");
     const customerId = String(request.query.customerId ?? "");
+    const group = String(request.query.group ?? "");
     const where = [];
     const values = [];
     if (q) {
@@ -1698,6 +1743,15 @@ app.get("/admin/orders", asyncRoute(async (request, response) => {
     if (status) {
         where.push("status = ?");
         values.push(status);
+    }
+    // Settled work is split off so the working list stays short. An explicit
+    // `status` filter always wins, so the existing status dropdown can still reach
+    // a completed order from the active list.
+    if (!status && group === "active") {
+        where.push("status NOT IN ('COMPLETED', 'CANCELLED')");
+    }
+    if (!status && group === "past") {
+        where.push("status IN ('COMPLETED', 'CANCELLED')");
     }
     if (paymentStatus) {
         where.push("payment_status = ?");

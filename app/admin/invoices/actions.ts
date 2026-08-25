@@ -1,10 +1,11 @@
 "use server";
 
 import type { DraftInvoiceKind } from "@/lib/types";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api/client";
 import { requireAdmin } from "@/lib/auth/guards";
+import { catalogTag, ordersTag } from "@/lib/cache-tags";
 
 function requestedItems(formData: FormData) {
   const productIds = formData.getAll("productId").map(String);
@@ -101,6 +102,9 @@ export async function finalizeDraftInvoiceAction(draftId: string) {
     if (error instanceof ApiError) redirect(`/admin/invoices?error=stock&message=${encodeURIComponent(error.message)}`);
     throw error;
   });
+  // Finalizing is the point where an invoice deducts stock.
+  updateTag(catalogTag);
+  updateTag(ordersTag);
   revalidatePath("/"); revalidatePath("/store"); revalidatePath("/admin/invoices"); revalidatePath("/admin/orders"); revalidatePath("/admin/products");
   redirect(`/admin/walk-in-sale/${order.id}/receipt`);
 }

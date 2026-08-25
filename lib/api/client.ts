@@ -32,14 +32,24 @@ function requiresServiceToken(pathname: string) {
   return pathname.startsWith("/orders/") && pathname !== "/orders/checkout";
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+/**
+ * Per-call overrides for callers that would rather fail fast than sit on the
+ * shared 12s-plus-one-retry budget. A page that can still render something
+ * useful without this particular read should not make the operator wait ~25s
+ * for it.
+ */
+export type ApiFetchInit = RequestInit & { retries?: number; timeoutMs?: number };
+
+export async function apiFetch<T>(path: string, init: ApiFetchInit = {}): Promise<T> {
   const url = new URL(path, getApiBaseUrl());
   const headers = new Headers(init.headers);
   const adminToken = process.env.API_ADMIN_TOKEN ?? process.env.ADMIN_API_TOKEN;
   const needsServiceToken = requiresServiceToken(url.pathname);
   const method = String(init.method ?? "GET").toUpperCase();
   const canRetry = method === "GET" || method === "HEAD";
-  const attempts = canRetry ? Math.max(Number(process.env.API_FETCH_RETRIES ?? defaultReadRetries) + 1, 1) : 1;
+  const configuredRetries = init.retries ?? Number(process.env.API_FETCH_RETRIES ?? defaultReadRetries);
+  const attempts = canRetry ? Math.max(configuredRetries + 1, 1) : 1;
+  const timeoutMs = init.timeoutMs ?? Number(process.env.API_FETCH_TIMEOUT_MS ?? defaultTimeoutMs);
 
   if (init.body && !headers.has("content-type") && !(init.body instanceof FormData)) {
     headers.set("content-type", "application/json");
@@ -57,7 +67,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.API_FETCH_TIMEOUT_MS ?? defaultTimeoutMs));
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     if (init.signal) {
       init.signal.addEventListener("abort", () => controller.abort(), { once: true });

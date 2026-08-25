@@ -43,6 +43,15 @@ const nextConfig: NextConfig = {
   // Next's cross-origin guard and blocks its dev resources. Development only.
   allowedDevOrigins: ["127.0.0.1", "localhost"],
   experimental: {
+    // Admin routes are dynamic, and Next drops a dynamic route from the client
+    // router cache the moment you navigate away -- so stepping back to a page
+    // you were just on refetched everything. Holding them briefly makes
+    // back-and-forth movement around the dashboard instant. `static` is the
+    // floor Next allows.
+    staleTimes: {
+      dynamic: 30,
+      static: 180
+    },
     // Shared hosting has a strict process limit. Keep page-data collection to one worker.
     cpus: 1,
     workerThreads: true,

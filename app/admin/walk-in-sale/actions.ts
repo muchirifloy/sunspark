@@ -1,8 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { apiFetch } from "@/lib/api/client";
+import { catalogTag, ordersTag } from "@/lib/cache-tags";
 import { requireAdmin } from "@/lib/auth/guards";
 import type { Order } from "@/lib/types";
 import type { ActionResult } from "@/lib/actions/result";
@@ -54,6 +55,10 @@ export async function createWalkInSaleAction(formData: FormData): Promise<Action
   }
   await apiFetch(`/admin/orders/${order.id}`, { method: "PATCH", body: JSON.stringify({ status: "COMPLETED", paymentStatus: "PAID" }) });
 
+  // A completed sale deducts stock, so the tagged catalogue reads that back the
+  // storefront and the admin product picker have to be dropped too.
+  updateTag(catalogTag);
+  updateTag(ordersTag);
   revalidatePath("/");
   revalidatePath("/store");
   revalidatePath("/admin/products");

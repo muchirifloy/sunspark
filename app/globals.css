@@ -2406,6 +2406,25 @@ summary:focus-visible {
   padding: 7px 11px;
   font-weight: 700;
   text-align: center;
+  /* Also used on <button> now (the invoice create panel's Close control), which
+     would otherwise pick up the browser's grey buttonface background. */
+  background: none;
+  color: inherit;
+}
+
+/* Order numbers, document references and customer names in admin tables are
+   links to the record. They sit inside <strong>/<span> that already set the
+   weight and colour, so this only has to signal affordance. */
+.admin-record-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.admin-record-link:hover,
+.admin-record-link:focus-visible {
+  color: var(--spark);
+  border-bottom-color: currentColor;
 }
 
 .map-text-link {

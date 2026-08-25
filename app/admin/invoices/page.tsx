@@ -1,12 +1,14 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
-import { WalkInSaleForm } from "@/components/admin/walk-in-sale-form";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
+import { DocumentCreatePanel, type CreateMode } from "@/components/admin/document-create-panel";
 import { PendingButton } from "@/components/ui/pending-button";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch, toQueryString } from "@/lib/api/client";
+import { getSaleProducts } from "@/lib/admin/queries";
 import { formatMoney } from "@/lib/money";
 import { createDraftInvoiceAction, createQuotationAction, finalizeDraftInvoiceAction } from "./actions";
-import type { Product } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,46 +36,71 @@ type DraftDocument = {
   items: unknown[];
 };
 
-export default async function InvoicesPage({ searchParams }: { searchParams?: Promise<{ q?: string; create?: string; error?: string; notice?: string; message?: string }> }) {
+// The actions redirect with `tab=` on failure while links use `create=`, so both
+// are honoured -- otherwise a validation error silently closed the panel and
+// threw away whatever the admin had typed.
+function initialCreateMode(params?: { create?: string; tab?: string }): CreateMode {
+  const requested = params?.create ?? params?.tab;
+  return requested === "quotation" ? "quotation" : requested === "invoice" ? "invoice" : "";
+}
+
+export default async function InvoicesPage({ searchParams }: { searchParams?: Promise<{ q?: string; create?: string; tab?: string; view?: string; error?: string; notice?: string; message?: string }> }) {
   await requireAdmin("/admin/invoices");
   const params = await searchParams;
-  const createMode = params?.create === "quotation" ? "quotation" : params?.create === "invoice" ? "invoice" : "";
-  const [products, invoices] = await Promise.all([
-    apiFetch<Product[]>("/products?limit=500").catch(() => []),
-    getInvoices(params?.q)
-  ]);
   const message = params?.message ?? (params?.error ? feedback[params.error] : params?.notice ? feedback[params.notice] : null);
-  return <AdminLayout title="Invoices & Quotations" subtitle="Create printable customer documents. Only finalized invoices update stock and orders.">
+  const isPast = params?.view === "past";
+
+  return <AdminLayout title="Invoices & Quotations" subtitle={isPast ? "Finalized and cancelled documents." : "Open drafts and quotations. Finalized ones move to Past documents."}>
     {message ? <p className={`admin-feedback ${params?.error ? "error" : "success"}`} role="status">{message}</p> : null}
-    <div className="document-create-actions">
-      <Link className={createMode === "invoice" ? "primary-btn" : "secondary-btn"} href="/admin/invoices?create=invoice">Create invoice</Link>
-      <Link className={createMode === "quotation" ? "primary-btn" : "secondary-btn"} href="/admin/invoices?create=quotation">Create quotation</Link>
-    </div>
-    {createMode ? (
-      <section className="document-editor-panel">
-        <div className="document-editor-heading">
-          <div>
-            <p className="eyebrow">{createMode === "quotation" ? "Quotation" : "Invoice"}</p>
-            <h2>{createMode === "quotation" ? "Create customer quotation" : "Create draft invoice"}</h2>
-          </div>
-          <Link className="table-link" href="/admin/invoices">Close</Link>
-        </div>
-        <WalkInSaleForm
-          action={createMode === "quotation" ? createQuotationAction : createDraftInvoiceAction}
-          products={products}
-          submitLabel={createMode === "quotation" ? "Create quotation" : "Create invoice"}
-        />
-      </section>
-    ) : null}
-    <form action="/admin/invoices" className="admin-filter"><input defaultValue={params?.q ?? ""} name="q" placeholder="Search document, customer, email, phone, item..." /><button type="submit">Search</button></form>
-    <div className="admin-table"><div className="admin-table-row invoice-row heading"><span>Document</span><span>Customer</span><span>Items</span><span>Total</span><span>Status</span><span /></div>
-      {invoices.map((invoice) => <div className="admin-table-row invoice-row" key={invoice.id}><strong>{invoice.reference}<small>{invoice.kind === "QUOTATION" ? "Quotation" : "Invoice"} | {new Date(invoice.createdAt).toLocaleDateString("en-KE")}</small></strong><span>{invoice.customerName}<small>{invoice.customerPhone ?? invoice.customerEmail ?? "No contact"}</small></span><span>{invoice.items.length}</span><strong>{formatMoney(invoice.totalCents)}</strong><span>{invoice.status}</span><div className="table-actions"><Link className="table-link" href={`/admin/invoices/${invoice.id}`}>View</Link>{invoice.status === "DRAFT" ? <Link className="table-link" href={`/admin/invoices/${invoice.id}/edit`}>Edit</Link> : null}{invoice.kind === "INVOICE" && invoice.status === "DRAFT" ? <form action={finalizeDraftInvoiceAction.bind(null, invoice.id)}><PendingButton pendingText="Finalizing...">Finalize</PendingButton></form> : invoice.orderId ? <Link className="table-link" href={`/admin/walk-in-sale/${invoice.orderId}/receipt`}>Receipt</Link> : null}</div></div>)}
-      {!invoices.length ? <p className="empty-state">No documents match this search.</p> : null}
-    </div>
+    {/* The catalogue and the document list are independent, so neither waits on
+        the other. Whichever resolves first paints. */}
+    {/* Nothing is created from the archive view, so the catalogue is not even
+        fetched there. */}
+    {isPast ? null : (
+      <AdminSectionErrorBoundary message={"The product catalogue could not be loaded, so new documents cannot be started right now. Reload to try again."}>
+        <Suspense fallback={<div className="document-create-actions"><span className="secondary-btn" aria-disabled="true">Create invoice</span><span className="secondary-btn" aria-disabled="true">Create quotation</span></div>}>
+          <CreatePanel initialMode={initialCreateMode(params)} />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    )}
+    <form action="/admin/invoices" className="admin-filter">
+      <input defaultValue={params?.q ?? ""} name="q" placeholder="Search document, customer, email, phone, item..." />
+      {isPast ? <input name="view" type="hidden" value="past" /> : null}
+      <button type="submit">Search</button>
+      <Link className="filter-reset" href="/admin/invoices">Open documents</Link>
+      <Link className="filter-reset" href="/admin/invoices?view=past">Past documents</Link>
+    </form>
+    <AdminSectionErrorBoundary message="The document list could not be loaded. This is a connection problem, not an empty list -- your invoices and quotations are safe. Reload to try again.">
+      <Suspense fallback={<p className="empty-state">Loading documents...</p>}>
+        <DocumentTable isPast={isPast} q={params?.q} />
+      </Suspense>
+    </AdminSectionErrorBoundary>
   </AdminLayout>;
 }
 
-async function getInvoices(q?: string): Promise<DraftDocument[]> {
+async function CreatePanel({ initialMode }: { initialMode: CreateMode }) {
+  const products = await getSaleProducts();
+
+  return <DocumentCreatePanel
+    createInvoiceAction={createDraftInvoiceAction}
+    createQuotationAction={createQuotationAction}
+    initialMode={initialMode}
+    products={products}
+  />;
+}
+
+async function DocumentTable({ isPast, q }: { isPast: boolean; q?: string }) {
+  const invoices = await getInvoices(q, isPast);
+
+  return <div className="admin-table"><div className="admin-table-row invoice-row heading"><span>Document</span><span>Customer</span><span>Items</span><span>Total</span><span>Status</span><span /></div>
+    {invoices.map((invoice) => <div className="admin-table-row invoice-row" key={invoice.id}><strong><Link className="admin-record-link" href={`/admin/invoices/${invoice.id}`}>{invoice.reference}</Link><small>{invoice.kind === "QUOTATION" ? "Quotation" : "Invoice"} | {new Date(invoice.createdAt).toLocaleDateString("en-KE")}</small></strong><span><Link className="admin-record-link" href={`/admin/invoices/${invoice.id}`}>{invoice.customerName}</Link><small>{invoice.customerPhone ?? invoice.customerEmail ?? "No contact"}</small></span><span>{invoice.items.length}</span><strong>{formatMoney(invoice.totalCents)}</strong><span>{invoice.status}</span><div className="table-actions"><Link className="table-link" href={`/admin/invoices/${invoice.id}`}>View</Link>{invoice.status === "DRAFT" ? <Link className="table-link" href={`/admin/invoices/${invoice.id}/edit`}>Edit</Link> : null}{invoice.kind === "INVOICE" && invoice.status === "DRAFT" ? <form action={finalizeDraftInvoiceAction.bind(null, invoice.id)}><PendingButton pendingText="Finalizing...">Finalize</PendingButton></form> : invoice.orderId ? <Link className="table-link" href={`/admin/walk-in-sale/${invoice.orderId}/receipt`}>Receipt</Link> : null}</div></div>)}
+    {!invoices.length ? <p className="empty-state">No documents match this search.</p> : null}
+  </div>;
+}
+
+async function getInvoices(q: string | undefined, isPast: boolean): Promise<DraftDocument[]> {
   const terms = q?.trim().split(/\s+/).filter(Boolean) ?? [];
-  return apiFetch<DraftDocument[]>(`/admin/draft-documents${toQueryString({ q: terms.join(" ") })}`).catch(() => []);
+  // Deliberately not caught: an empty table and a dead backend must not look
+  // the same. The error boundary above states which one it is.
+  return apiFetch<DraftDocument[]>(`/admin/draft-documents${toQueryString({ q: terms.join(" "), group: isPast ? "past" : "active" })}`);
 }

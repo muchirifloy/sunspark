@@ -58,6 +58,20 @@ export type ProductOption = {
   updatedAt: string | Date;
 };
 
+/**
+ * The shape the walk-in / invoice / quotation product picker actually renders.
+ * Kept separate from Product so the admin forms are not handed description
+ * HTML, SEO columns, a nested category and every image row for the whole
+ * catalogue just to draw a name, a price and a stock count.
+ */
+export type SaleProduct = {
+  id: string;
+  name: string;
+  priceCents: number;
+  stockQuantity: number;
+  options: ProductOption[];
+};
+
 export type Product = {
   id: string;
   name: string;
