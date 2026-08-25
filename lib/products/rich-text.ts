@@ -1,8 +1,34 @@
 import sanitizeHtml from "sanitize-html";
 
+/**
+ * Inline styling is allowed, but only these properties and only these value
+ * shapes. `style` is never accepted as free text: sanitize-html drops any
+ * declaration whose property is not listed here or whose value fails the regex,
+ * so nothing like `url(...)`, `expression(...)` or a positioning override can
+ * reach the storefront. Colours are restricted to hex and rgb/rgba, sizes and
+ * spacing to plain numbers with a known unit.
+ */
+const allowedInlineStyles: Record<string, RegExp[]> = {
+  color: [/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i, /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/i],
+  "background-color": [/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i, /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/i, /^transparent$/i],
+  // Capped well below anything that could be used to cover surrounding page UI.
+  "font-size": [/^(?:[0-9]|[1-6][0-9]|7[0-2])(?:\.\d+)?px$/, /^[0-4](?:\.\d+)?rem$/, /^(?:[5-9][0-9]|1[0-9][0-9]|200)%$/],
+  "text-align": [/^(?:left|right|center|justify)$/],
+  "line-height": [/^[0-3](?:\.\d+)?$/]
+};
+
 const richTextOptions: sanitizeHtml.IOptions = {
-  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "ul", "ol", "li", "a", "h2", "h3", "blockquote"],
-  allowedAttributes: { a: ["href", "target", "rel"] },
+  allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "span", "ul", "ol", "li", "a", "h2", "h3", "blockquote"],
+  allowedAttributes: {
+    a: ["href", "target", "rel"],
+    span: ["style"],
+    p: ["style"],
+    h2: ["style"],
+    h3: ["style"],
+    li: ["style"],
+    blockquote: ["style"]
+  },
+  allowedStyles: { "*": allowedInlineStyles },
   allowedSchemes: ["http", "https", "mailto", "tel"],
   transformTags: {
     a: (_tagName, attributes) => ({
