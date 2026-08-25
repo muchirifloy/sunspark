@@ -2415,6 +2415,23 @@ summary:focus-visible {
 /* Order numbers, document references and customer names in admin tables are
    links to the record. They sit inside <strong>/<span> that already set the
    weight and colour, so this only has to signal affordance. */
+/* Per-line negotiated price on walk-in / invoice / quotation forms. The
+   highlight is the signal that this line no longer matches the catalogue. */
+.sale-line-price input {
+  width: 100%;
+  min-width: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font: inherit;
+  text-align: right;
+}
+
+.sale-line-price input.negotiated {
+  border-color: var(--spark);
+  font-weight: 700;
+}
+
 .admin-record-link {
   color: inherit;
   text-decoration: none;
@@ -3997,7 +4014,8 @@ summary:focus-visible {
 
 .sale-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px 120px auto;
+  /* name | negotiated unit price | quantity | line total | remove */
+  grid-template-columns: minmax(0, 1fr) 110px 90px 120px auto;
   align-items: center;
   gap: 12px;
   padding: 13px 0;
@@ -4948,7 +4966,7 @@ summary:focus-visible {
   }
 
   .sale-line {
-    grid-template-columns: minmax(0, 1fr) 74px;
+    grid-template-columns: minmax(0, 1fr) 80px 68px;
   }
 
   .sale-line > strong,

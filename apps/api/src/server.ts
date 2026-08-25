@@ -422,6 +422,29 @@ const optionalEmail = z.preprocess(
 );
 const slugInput = z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a clean URL slug.");
 const idInput = z.string().trim().min(2).max(80);
+
+/**
+ * A negotiated unit price, in cents.
+ *
+ * Only ever accepted on admin-token routes. The public checkout endpoint must
+ * keep deriving price from the catalogue -- anything else would let a caller
+ * name their own price. `cost_cents` is never accepted from a client at all,
+ * because profit is computed as (total - cost) and a client-supplied cost would
+ * make that number meaningless.
+ *
+ * Zero is allowed: giving an item away as part of a deal is a real thing an
+ * operator does, and recording it as 0 is more honest than a fake 1.
+ */
+const negotiatedUnitCents = z.number().int().min(0).max(100_000_000);
+
+/**
+ * Applies an optional negotiated price over a catalogue price, and reports the
+ * catalogue price alongside so it can be stored for audit.
+ */
+function resolveLinePrice(catalogueUnitCents: number, override?: number | null) {
+  const unitCents = override ?? catalogueUnitCents;
+  return { unitCents, listPriceCents: catalogueUnitCents, isOverridden: unitCents !== catalogueUnitCents };
+}
 const imageUrlInput = z.string().trim().refine(
   (value) => value.startsWith("/uploads/") || value.startsWith("uploads/") || /^https:\/\/[^/]+/i.test(value),
   "Image URLs must be HTTPS or uploaded files."
@@ -1624,7 +1647,7 @@ app.get("/admin/draft-documents", asyncRoute(async (request, response) => {
     ? await query<Record<string, unknown>>(
         `SELECT id, document_id AS documentId, product_id AS productId, product_option_id AS productOptionId,
           product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
-          unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+          unit_cents AS unitCents, list_price_cents AS listPriceCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
          FROM draft_document_items WHERE document_id IN (${ids.map(() => "?").join(",")})`,
         ids
       )
@@ -1645,7 +1668,7 @@ app.get("/admin/draft-documents/:id", asyncRoute(async (request, response) => {
   const items = await query<Record<string, unknown>>(
     `SELECT id, document_id AS documentId, product_id AS productId, product_option_id AS productOptionId,
       product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
-      unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+      unit_cents AS unitCents, list_price_cents AS listPriceCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
      FROM draft_document_items WHERE document_id = ?`,
     [request.params.id]
   );
@@ -1659,7 +1682,12 @@ app.post("/admin/draft-documents", asyncRoute(async (request, response) => {
     customerEmail: optionalEmail,
     customerPhone: optionalText(40),
     paymentMethod: z.enum(["WHATSAPP", "MPESA", "CASH"]).default("CASH"),
-    items: z.array(z.object({ productId: idInput, productOptionId: idInput.optional().nullable(), quantity: z.number().int().positive().max(100000) })).min(1).max(100)
+    items: z.array(z.object({
+      productId: idInput,
+      productOptionId: idInput.optional().nullable(),
+      quantity: z.number().int().positive().max(100000),
+      unitCents: negotiatedUnitCents.optional().nullable()
+    })).min(1).max(100)
   }).parse(request.body);
   const productIds = [...new Set(input.items.map((item) => item.productId))];
   const rows = await query<ProductRow>(
@@ -1678,15 +1706,17 @@ app.post("/admin/draft-documents", asyncRoute(async (request, response) => {
       if (!product) throw new HttpError(400, "One or more selected products are unavailable.");
       const options = optionMap.get(product.id) ?? [];
       const option = options.find((candidate) => candidate.id === item.productOptionId) ?? options.find((candidate) => truthy(candidate.is_default)) ?? options[0] ?? null;
-      const unitCents = option?.price_cents ?? product.price_cents;
+      // cost is always the catalogue cost. Only the selling price is negotiable,
+      // so profit stays anchored to what the item actually cost the business.
       const costCents = option?.cost_cents ?? product.cost_cents;
+      const { unitCents, listPriceCents } = resolveLinePrice(option?.price_cents ?? product.price_cents, item.unitCents);
       const sellingUnit = option?.selling_unit ?? product.selling_unit;
       const stockMultiplier = Number(option?.stock_multiplier ?? 1);
       const optionLabel = option?.label ?? unitLabel(sellingUnit);
       const lineTotal = unitCents * item.quantity;
       const stockDeducted = stockMultiplier * item.quantity;
       totalCents += lineTotal;
-      return { product, option, optionLabel, sellingUnit, unitCents, costCents, stockDeducted, quantity: item.quantity, lineTotal };
+      return { product, option, optionLabel, sellingUnit, unitCents, listPriceCents, costCents, stockDeducted, quantity: item.quantity, lineTotal };
     });
 
     await connection.query(
@@ -1709,11 +1739,11 @@ app.post("/admin/draft-documents", asyncRoute(async (request, response) => {
     for (const line of lines) {
       await connection.query(
         `INSERT INTO draft_document_items
-         (id, document_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, cost_cents, quantity, total_cents, stock_deducted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, document_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, list_price_cents, cost_cents, quantity, total_cents, stock_deducted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id("dit"), documentId, line.product.id, line.option?.id ?? null, line.product.name, line.optionLabel,
-          line.sellingUnit, line.unitCents, line.costCents, line.quantity, line.lineTotal, line.stockDeducted
+          line.sellingUnit, line.unitCents, line.listPriceCents, line.costCents, line.quantity, line.lineTotal, line.stockDeducted
         ]
       );
     }
@@ -1728,7 +1758,12 @@ app.patch("/admin/draft-documents/:id", asyncRoute(async (request, response) => 
     customerEmail: optionalEmail,
     customerPhone: optionalText(40),
     paymentMethod: z.enum(["WHATSAPP", "MPESA", "CASH"]).default("CASH"),
-    items: z.array(z.object({ productId: idInput, productOptionId: idInput.optional().nullable(), quantity: z.number().int().positive().max(100000) })).min(1).max(100)
+    items: z.array(z.object({
+      productId: idInput,
+      productOptionId: idInput.optional().nullable(),
+      quantity: z.number().int().positive().max(100000),
+      unitCents: negotiatedUnitCents.optional().nullable()
+    })).min(1).max(100)
   }).parse(request.body);
 
   const documents = await query<Record<string, unknown>>("SELECT * FROM draft_documents WHERE id = ? LIMIT 1", [request.params.id]);
@@ -1749,8 +1784,9 @@ app.patch("/admin/draft-documents/:id", asyncRoute(async (request, response) => 
     if (!product) throw new HttpError(400, "One or more selected products are unavailable.");
     const options = optionMap.get(product.id) ?? [];
     const option = options.find((candidate) => candidate.id === item.productOptionId) ?? options.find((candidate) => truthy(candidate.is_default)) ?? options[0] ?? null;
-    const unitCents = option?.price_cents ?? product.price_cents;
+    // Cost stays catalogue-derived; only the selling price is negotiable.
     const costCents = option?.cost_cents ?? product.cost_cents;
+    const { unitCents, listPriceCents } = resolveLinePrice(option?.price_cents ?? product.price_cents, item.unitCents);
     const sellingUnit = option?.selling_unit ?? product.selling_unit;
     const optionLabel = option?.label ?? unitLabel(sellingUnit);
     const stockMultiplier = Number(option?.stock_multiplier ?? 1);
@@ -1760,6 +1796,7 @@ app.patch("/admin/draft-documents/:id", asyncRoute(async (request, response) => 
       optionLabel,
       sellingUnit,
       unitCents,
+      listPriceCents,
       costCents,
       stockDeducted: stockMultiplier * item.quantity,
       quantity: item.quantity,
@@ -1779,11 +1816,11 @@ app.patch("/admin/draft-documents/:id", asyncRoute(async (request, response) => 
     for (const line of lines) {
       await connection.query(
         `INSERT INTO draft_document_items
-         (id, document_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, cost_cents, quantity, total_cents, stock_deducted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, document_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, list_price_cents, cost_cents, quantity, total_cents, stock_deducted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id("ddi"), request.params.id, line.product.id, line.option?.id ?? null, line.product.name,
-          line.optionLabel, line.sellingUnit, line.unitCents, line.costCents, line.quantity, line.totalCents, line.stockDeducted
+          line.optionLabel, line.sellingUnit, line.unitCents, line.listPriceCents, line.costCents, line.quantity, line.totalCents, line.stockDeducted
         ]
       );
     }
@@ -1833,11 +1870,12 @@ app.post("/admin/draft-documents/:id/finalize", asyncRoute(async (request, respo
       const stockDeducted = Number(item.stock_deducted ?? Number(item.quantity));
       await connection.query(
         `INSERT INTO order_items
-         (id, order_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, cost_cents, quantity, total_cents, stock_deducted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, order_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, list_price_cents, cost_cents, quantity, total_cents, stock_deducted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id("itm"), orderId, item.product_id, item.product_option_id ?? null, item.product_name,
-          item.option_label ?? null, item.selling_unit ?? "UNIT", item.unit_cents, item.cost_cents, item.quantity, item.total_cents, stockDeducted
+          item.option_label ?? null, item.selling_unit ?? "UNIT", item.unit_cents, item.list_price_cents ?? null,
+          item.cost_cents, item.quantity, item.total_cents, stockDeducted
         ]
       );
       await connection.query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [stockDeducted, item.product_id]);
@@ -1963,6 +2001,104 @@ app.post("/auth/reset-password", asyncRoute(async (request, response) => {
   });
 
   response.json({ ok: true, role: rows[0].role });
+}));
+
+/**
+ * Counter sales recorded by an admin.
+ *
+ * Deliberately NOT /orders/checkout. That route is public by design (a shopper
+ * has no token), so it must keep deriving every price from the catalogue --
+ * accepting a price there would let anyone on the internet name their own. This
+ * route sits behind the /admin service-token guard, which is what makes a
+ * negotiated price safe to accept.
+ *
+ * The sale is recorded as COMPLETED/PAID because the money has already changed
+ * hands at the counter.
+ */
+app.post("/admin/walk-in-sales", asyncRoute(async (request, response) => {
+  const input = z.object({
+    customerName: cleanText(140).min(2),
+    customerEmail: optionalEmail,
+    customerPhone: optionalText(40),
+    paymentMethod: z.enum(["MPESA", "CASH"]),
+    items: z.array(z.object({
+      productId: idInput,
+      productOptionId: idInput.optional().nullable(),
+      quantity: z.number().int().positive().max(100000),
+      unitCents: negotiatedUnitCents.optional().nullable()
+    })).min(1).max(100)
+  }).parse(request.body);
+
+  const productIds = [...new Set(input.items.map((item) => item.productId))];
+  const rows = await query<ProductRow>(
+    `SELECT * FROM products WHERE is_active = TRUE AND id IN (${productIds.map(() => "?").join(",")})`,
+    productIds
+  );
+  if (rows.length !== productIds.length) throw new HttpError(400, "One or more selected products are unavailable.");
+  const products = new Map(rows.map((row) => [row.id, row]));
+  const optionMap = await optionsForProducts(productIds);
+
+  const order = await transaction(async (connection) => {
+    const orderId = id("ord");
+    const orderNumber = `SUN-${Date.now().toString().slice(-8)}`;
+    let subtotal = 0;
+
+    const lines = input.items.map((item) => {
+      const product = products.get(item.productId);
+      if (!product) throw new HttpError(400, "One or more selected products are unavailable.");
+      const options = optionMap.get(product.id) ?? [];
+      const option =
+        options.find((candidate) => candidate.id === item.productOptionId) ??
+        options.find((candidate) => truthy(candidate.is_default)) ??
+        options[0] ??
+        null;
+      // Cost is never client-supplied: profit is (total - cost), so a caller
+      // able to set cost could report any margin it liked.
+      const costCents = option?.cost_cents ?? product.cost_cents;
+      const { unitCents, listPriceCents } = resolveLinePrice(option?.price_cents ?? product.price_cents, item.unitCents);
+      const sellingUnit = option?.selling_unit ?? product.selling_unit;
+      const stockDeducted = Number(option?.stock_multiplier ?? 1) * item.quantity;
+      if (Number(product.stock_quantity) < stockDeducted) throw new HttpError(400, `${product.name} has insufficient stock.`);
+      const total = unitCents * item.quantity;
+      subtotal += total;
+      return { product, option, sellingUnit, unitCents, listPriceCents, costCents, stockDeducted, quantity: item.quantity, total };
+    });
+
+    await connection.query(
+      `INSERT INTO orders
+       (id, order_number, customer_name, customer_email, customer_phone, payment_method, payment_status, status, subtotal_cents, total_cents)
+       VALUES (?, ?, ?, ?, ?, ?, 'PAID', 'COMPLETED', ?, ?)`,
+      [
+        orderId,
+        orderNumber,
+        input.customerName,
+        input.customerEmail ?? `walkin-${orderNumber.toLowerCase()}@sunsparkelectricals.co.ke`,
+        input.customerPhone ?? null,
+        input.paymentMethod,
+        subtotal,
+        subtotal
+      ]
+    );
+
+    for (const line of lines) {
+      await connection.query(
+        `INSERT INTO order_items
+         (id, order_id, product_id, product_option_id, product_name, option_label, selling_unit, unit_cents, list_price_cents, cost_cents, quantity, total_cents, stock_deducted)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id("itm"), orderId, line.product.id, line.option?.id ?? null, line.product.name,
+          line.option?.label ?? unitLabel(line.sellingUnit), line.sellingUnit, line.unitCents, line.listPriceCents,
+          line.costCents, line.quantity, line.total, line.stockDeducted
+        ]
+      );
+      await connection.query("UPDATE products SET stock_quantity = stock_quantity - ? WHERE id = ?", [line.stockDeducted, line.product.id]);
+    }
+
+    await connection.query("INSERT INTO invoices (id, order_id, invoice_number) VALUES (?, ?, ?)", [id("inv"), orderId, `INV-${orderNumber}`]);
+    return { id: orderId, orderNumber, totalCents: subtotal };
+  });
+
+  response.status(201).json(order);
 }));
 
 app.post("/orders/checkout", asyncRoute(async (request, response) => {
@@ -2169,7 +2305,7 @@ app.get("/orders/:id", requireServiceToken, asyncRoute(async (request, response)
     query<Record<string, unknown>>(
       `SELECT id, order_id AS orderId, product_id AS productId, product_option_id AS productOptionId,
        product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
-       unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+       unit_cents AS unitCents, list_price_cents AS listPriceCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
        FROM order_items WHERE order_id = ?`,
       [orderId]
     ),
@@ -2233,7 +2369,7 @@ app.get("/admin/orders", asyncRoute(async (request, response) => {
     ? await query<Record<string, unknown>>(
         `SELECT id, order_id AS orderId, product_id AS productId, product_option_id AS productOptionId,
          product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
-         unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+         unit_cents AS unitCents, list_price_cents AS listPriceCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
          FROM order_items WHERE order_id IN (${ids.map(() => "?").join(",")})`,
         ids
       )
@@ -2263,7 +2399,7 @@ app.get("/admin/orders/:id", asyncRoute(async (request, response) => {
     query<Record<string, unknown>>(
       `SELECT id, order_id AS orderId, product_id AS productId, product_option_id AS productOptionId,
        product_name AS productName, option_label AS optionLabel, selling_unit AS sellingUnit,
-       unit_cents AS unitCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
+       unit_cents AS unitCents, list_price_cents AS listPriceCents, cost_cents AS costCents, quantity, total_cents AS totalCents, stock_deducted AS stockDeducted
        FROM order_items WHERE order_id = ?`,
       [request.params.id]
     ),

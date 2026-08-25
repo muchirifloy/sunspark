@@ -117,6 +117,13 @@ export type OrderItem = {
   optionLabel: string | null;
   sellingUnit: SellingUnit;
   unitCents: number;
+  /**
+   * Catalogue price at the time of sale. Null on lines recorded before
+   * negotiated pricing existed, and equal to unitCents when nothing was
+   * negotiated. A difference means the price was agreed for that sale alone --
+   * the product's own price is never changed by it.
+   */
+  listPriceCents?: number | null;
   costCents: number;
   quantity: number;
   totalCents: number;

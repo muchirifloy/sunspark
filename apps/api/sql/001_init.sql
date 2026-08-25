@@ -246,3 +246,12 @@ ALTER TABLE draft_document_items ADD COLUMN IF NOT EXISTS option_label VARCHAR(6
 ALTER TABLE draft_document_items ADD COLUMN IF NOT EXISTS selling_unit VARCHAR(32) NOT NULL DEFAULT 'UNIT' AFTER option_label;
 ALTER TABLE draft_document_items ADD COLUMN IF NOT EXISTS stock_deducted DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER total_cents;
 ALTER TABLE product_options ADD COLUMN IF NOT EXISTS stock_multiplier DECIMAL(10,2) NOT NULL DEFAULT 1 AFTER cost_cents;
+
+-- Negotiated pricing. `unit_cents` is what the customer actually pays and is what
+-- profit is calculated from. `list_price_cents` records the catalogue price at the
+-- moment of sale, so a discount or a markup stays auditable even after the product
+-- price itself changes later. NULL means the line was never overridden.
+-- Note: no semicolons in this comment. The migration runner splits statements on
+-- them, so one here would be executed as a statement of its own.
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS list_price_cents INT NULL AFTER unit_cents;
+ALTER TABLE draft_document_items ADD COLUMN IF NOT EXISTS list_price_cents INT NULL AFTER unit_cents;

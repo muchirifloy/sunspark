@@ -5,7 +5,14 @@ import { useMemo, useState, useTransition } from "react";
 import type { ActionResult } from "@/lib/actions/result";
 import type { SaleProduct } from "@/lib/types";
 
-type SaleLine = { productId: string; productOptionId?: string | null; quantity: number };
+type SaleLine = {
+  productId: string;
+  productOptionId?: string | null;
+  quantity: number;
+  // Undefined means "use the catalogue price". A number here is a negotiated
+  // price for this sale only -- it never writes back to the product.
+  unitCents?: number;
+};
 
 function money(cents: number) {
   return new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 }).format(cents / 100);
@@ -64,7 +71,8 @@ export function WalkInSaleForm({
   const total = lines.reduce((sum, line) => {
     const product = productById.get(line.productId);
     const option = product?.options?.find((item) => item.id === line.productOptionId) ?? product?.options?.find((item) => item.isDefault);
-    return sum + (option?.priceCents ?? product?.priceCents ?? 0) * line.quantity;
+    const listPrice = option?.priceCents ?? product?.priceCents ?? 0;
+    return sum + (line.unitCents ?? listPrice) * line.quantity;
   }, 0);
 
   function addLine(choiceKey: string) {
@@ -163,14 +171,49 @@ export function WalkInSaleForm({
             if (!product) return null;
             const option = product.options?.find((item) => item.id === line.productOptionId) ?? product.options?.find((item) => item.isDefault);
             const lineKey = `${product.id}-${option?.id ?? "default"}`;
-            const unitPrice = option?.priceCents ?? product.priceCents;
+            const listPrice = option?.priceCents ?? product.priceCents;
+            const unitPrice = line.unitCents ?? listPrice;
+            const isNegotiated = unitPrice !== listPrice;
+            const matches = (item: SaleLine) => item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? "");
             return <div className="sale-line" key={lineKey}>
               <input name="productId" type="hidden" value={product.id} />
               <input name="productOptionId" type="hidden" value={option?.id ?? ""} />
-              <span><strong>{product.name}</strong><small>{option?.label ? `${option.label} · ` : ""}{money(unitPrice)} each</small></span>
-              <input aria-label={`${product.name} quantity`} max={product.stockQuantity} min="1" name="quantity" onChange={(event) => setLines((current) => current.map((item) => item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? "") ? { ...item, quantity: Math.max(1, Math.min(product.stockQuantity, Number(event.target.value) || 1)) } : item))} type="number" value={line.quantity} />
+              {/* Submitted in cents so no rounding happens between the shown
+                  price and the stored one. */}
+              <input name="unitCents" type="hidden" value={unitPrice} />
+              <span>
+                <strong>{product.name}</strong>
+                <small>
+                  {option?.label ? `${option.label} · ` : ""}
+                  {isNegotiated ? <>list {money(listPrice)}</> : <>{money(listPrice)} each</>}
+                </small>
+              </span>
+              <label className="sale-line-price">
+                <span className="visually-hidden">{`${product.name} unit price`}</span>
+                <input
+                  aria-label={`${product.name} unit price in shillings`}
+                  className={isNegotiated ? "negotiated" : undefined}
+                  min="0"
+                  onChange={(event) => {
+                    const raw = event.target.value.trim();
+                    setLines((current) => current.map((item) => {
+                      if (!matches(item)) return item;
+                      // Clearing the box restores the catalogue price rather than
+                      // pinning the line to zero.
+                      if (raw === "") return { ...item, unitCents: undefined };
+                      const shillings = Number(raw);
+                      if (!Number.isFinite(shillings) || shillings < 0) return item;
+                      return { ...item, unitCents: Math.round(shillings * 100) };
+                    }));
+                  }}
+                  step="1"
+                  type="number"
+                  value={unitPrice / 100}
+                />
+              </label>
+              <input aria-label={`${product.name} quantity`} max={product.stockQuantity} min="1" name="quantity" onChange={(event) => setLines((current) => current.map((item) => matches(item) ? { ...item, quantity: Math.max(1, Math.min(product.stockQuantity, Number(event.target.value) || 1)) } : item))} type="number" value={line.quantity} />
               <strong>{money(unitPrice * line.quantity)}</strong>
-              <button aria-label={`Delete ${product.name} from sale`} className="remove-line" onClick={() => setLines((current) => current.filter((item) => !(item.productId === product.id && (item.productOptionId ?? "") === (option?.id ?? ""))))} type="button">Delete</button>
+              <button aria-label={`Delete ${product.name} from sale`} className="remove-line" onClick={() => setLines((current) => current.filter((item) => !matches(item)))} type="button">Delete</button>
             </div>;
           })}
           {!lines.length ? <p className="empty-state">No products added to this sale.</p> : null}

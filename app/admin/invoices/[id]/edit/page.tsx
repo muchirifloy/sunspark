@@ -71,7 +71,11 @@ async function EditForm({ document }: { document: DraftDocumentDetail }) {
         phone: document.customerPhone,
         paymentMethod: document.paymentMethod
       }}
-      initialLines={document.items.map((item) => ({ productId: item.productId ?? "", quantity: item.quantity })).filter((item) => item.productId)}
+      // unitCents is carried back in so re-opening a negotiated document does
+      // not quietly snap every line to the current catalogue price.
+      initialLines={document.items
+        .map((item) => ({ productId: item.productId ?? "", quantity: item.quantity, unitCents: item.unitCents }))
+        .filter((item) => item.productId)}
       products={products}
       submitLabel={`Save ${document.kind === "QUOTATION" ? "quotation" : "invoice"}`}
     />

@@ -39,8 +39,20 @@ async function ensurePerformanceIndexes() {
         await execute(`ALTER TABLE \`${index.table}\` ADD INDEX \`${index.name}\` (${index.columns})`);
     }
 }
+/**
+ * `ADD COLUMN IF NOT EXISTS` is MariaDB syntax that MySQL rejects, so it is
+ * emulated here by checking information_schema first.
+ *
+ * The match runs against the statement with leading `--` comment lines removed.
+ * Anchoring on the raw text meant a single explanatory comment above an
+ * `ADD COLUMN IF NOT EXISTS` line silently skipped this shim and sent the
+ * unsupported syntax straight to the server.
+ */
+function withoutLeadingComments(statement) {
+    return statement.replace(/^(?:[ \t]*--[^\r\n]*\r?\n)+/, "").trim();
+}
 async function executeSchemaStatement(statement) {
-    const conditionalColumn = statement.match(/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD COLUMN IF NOT EXISTS\s+`?([a-zA-Z0-9_]+)`?/i);
+    const conditionalColumn = withoutLeadingComments(statement).match(/^ALTER TABLE\s+`?([a-zA-Z0-9_]+)`?\s+ADD COLUMN IF NOT EXISTS\s+`?([a-zA-Z0-9_]+)`?/i);
     if (!conditionalColumn) {
         await execute(statement);
         return;
@@ -51,7 +63,7 @@ async function executeSchemaStatement(statement) {
      WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`, [tableName, columnName]);
     if (Number(existing[0]?.count ?? 0) > 0)
         return;
-    await execute(statement.replace(/ADD COLUMN IF NOT EXISTS/i, "ADD COLUMN"));
+    await execute(withoutLeadingComments(statement).replace(/ADD COLUMN IF NOT EXISTS/i, "ADD COLUMN"));
 }
 function escapeHtml(value) {
     return value
