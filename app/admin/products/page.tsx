@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { requireAdmin } from "@/lib/auth/guards";
 import { canManageCatalog } from "@/lib/auth/roles";
 import { apiFetch, toQueryString } from "@/lib/api/client";
@@ -37,16 +39,6 @@ export default async function AdminProductsPage({
   const params = await searchParams;
   const perPage = 25;
   const requestedPage = Math.max(Number(params?.page ?? 1) || 1, 1);
-  const productResult = await getProducts({
-    category: params?.category,
-    q: params?.q,
-    status: params?.status,
-    page: requestedPage,
-    perPage
-  });
-  const products = productResult.products;
-  const pageCount = Math.max(Math.ceil(productResult.total / perPage), 1);
-  const page = Math.min(productResult.page, pageCount);
   const categories = await getCategories();
   const feedback = params?.error ? messages[params.error] : params?.notice ? messages[params.notice] : null;
 
@@ -63,11 +55,6 @@ export default async function AdminProductsPage({
       }
     >
         {feedback ? <p className={params?.error ? "admin-feedback error" : "admin-feedback success"} role="status">{feedback}</p> : null}
-        {productResult.unavailable ? (
-          <p className="admin-feedback error" role="alert">
-            Product records could not load from the backend right now. Filters and actions are still available; retry the list in a moment.
-          </p>
-        ) : null}
         <form action="/admin/products" className="admin-filter">
           <input name="q" defaultValue={params?.q ?? ""} placeholder="Search product, brand, description..." />
           <select name="category" defaultValue={params?.category ?? ""}>
@@ -85,6 +72,41 @@ export default async function AdminProductsPage({
           <button type="submit">Filter</button>
           <Link className="filter-reset" href="/admin/products">All products</Link>
         </form>
+        {/* Filters and the "add product" button are usable at once; the catalogue
+            itself streams in, which is the part that takes the time. */}
+        <AdminSectionErrorBoundary message="The product list could not be loaded. This is a connection problem, not an empty catalogue. Reload to try again.">
+          <Suspense fallback={<ProductsSkeleton />} key={`${params?.q ?? ""}-${params?.category ?? ""}-${params?.status ?? ""}-${requestedPage}`}>
+            <ProductTable canEditProducts={canEditProducts} params={params} perPage={perPage} requestedPage={requestedPage} />
+          </Suspense>
+        </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+async function ProductTable({ canEditProducts, params, perPage, requestedPage }: {
+  canEditProducts: boolean;
+  params?: { q?: string; category?: string; status?: string; page?: string };
+  perPage: number;
+  requestedPage: number;
+}) {
+  const productResult = await getProducts({
+    category: params?.category,
+    q: params?.q,
+    status: params?.status,
+    page: requestedPage,
+    perPage
+  });
+  const products = productResult.products;
+  const pageCount = Math.max(Math.ceil(productResult.total / perPage), 1);
+  const page = Math.min(productResult.page, pageCount);
+
+  return (
+    <>
+        {productResult.unavailable ? (
+          <p className="admin-feedback error" role="alert">
+            Product records could not load from the backend right now. Filters and actions are still available; retry the list in a moment.
+          </p>
+        ) : null}
         <div className="admin-table product-admin-table">
           <div className="admin-table-row heading">
             <span>Product</span>
@@ -157,7 +179,19 @@ export default async function AdminProductsPage({
             <Link className={page >= pageCount ? "disabled" : ""} href={productPageHref(params, page + 1)}>Next</Link>
           </nav>
         ) : null}
-    </AdminLayout>
+    </>
+  );
+}
+
+function ProductsSkeleton() {
+  return (
+    <div className="admin-table product-admin-table" aria-busy="true">
+      {[0, 1, 2, 3, 4, 5].map((row) => (
+        <div className="admin-table-row admin-row-skeleton" key={row}>
+          <span /><span /><span /><span /><span /><span />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -176,7 +210,7 @@ function productPageHref(
 async function getProducts(input: { q?: string; category?: string; status?: string; page: number; perPage: number }): Promise<AdminProductsResponse> {
   const terms = input.q?.trim().split(/\s+/).filter(Boolean) ?? [];
   try {
-    return apiFetch<AdminProductsResponse>(`/admin/products${toQueryString({
+    return await apiFetch<AdminProductsResponse>(`/admin/products${toQueryString({
       q: terms.join(" "),
       category: input.category,
       status: input.status,
@@ -190,7 +224,7 @@ async function getProducts(input: { q?: string; category?: string; status?: stri
 
 async function getCategories() {
   try {
-    return apiFetch<Category[]>("/admin/categories");
+    return await apiFetch<Category[]>("/admin/categories");
   } catch {
     return [];
   }

@@ -6,6 +6,7 @@
  * accounts, online orders, counter sales, and quotations - deduplicated across all four,
  * because the same person routinely appears in more than one.
  */
+import { cached, invalidate } from "./cache.js";
 import { execute, query } from "./db.js";
 import { sendEmail } from "./email.js";
 import { env } from "./env.js";
@@ -29,32 +30,46 @@ function usableEmail(value) {
  * Keyed on the phone number first: one person may have used two email addresses across
  * a web order and a counter sale, and texting them twice costs money and goodwill.
  */
-export async function resolveAudience(input) {
-    const sources = new Set(input.sources.length ? input.sources : audienceSources);
-    const since = input.lookbackDays && input.lookbackDays > 0
-        ? new Date(Date.now() - input.lookbackDays * 24 * 60 * 60 * 1000)
-        : null;
-    const window = (column) => (since ? ` AND ${column} >= ?` : "");
-    const windowValue = since ? [since] : [];
-    const [registered, online, walkIn, quotes] = await Promise.all([
-        sources.has("REGISTERED_CUSTOMERS")
-            ? query(`SELECT name, email, phone FROM users WHERE role = 'CUSTOMER'${window("created_at")}`, windowValue)
-            : Promise.resolve([]),
-        sources.has("ORDER_CUSTOMERS")
-            ? query(`SELECT customer_name AS name, customer_email AS email, customer_phone AS phone
-           FROM orders WHERE source = 'ONLINE' AND status <> 'CANCELLED'${window("created_at")}`, windowValue)
-            : Promise.resolve([]),
-        sources.has("WALK_IN_CUSTOMERS")
-            ? query(`SELECT customer_name AS name, customer_email AS email, customer_phone AS phone
-           FROM orders WHERE source = 'WALK_IN' AND status <> 'CANCELLED'${window("created_at")}`, windowValue)
-            : Promise.resolve([]),
-        sources.has("QUOTE_CONTACTS")
-            ? query(`SELECT customer_name AS name, customer_email AS email, customer_phone AS phone
-           FROM draft_documents${since ? " WHERE created_at >= ?" : ""}`, windowValue)
-            : Promise.resolve([])
-    ]);
+/**
+ * Every contact row for the chosen sources, in one query.
+ *
+ * A UNION ALL rather than a query per source: the admin tab needs all four counts at
+ * once, and issuing them separately meant four scans of the same two tables, then a
+ * fifth pass to count the union. Only the three columns a send actually uses are
+ * selected, so a large customer list stays cheap to move.
+ */
+async function contactRows(sources, since) {
+    const parts = [];
+    const values = [];
+    const window = (column) => {
+        if (!since)
+            return "";
+        values.push(since);
+        return ` AND ${column} >= ?`;
+    };
+    if (sources.has("REGISTERED_CUSTOMERS")) {
+        parts.push(`SELECT 'REGISTERED_CUSTOMERS' AS src, name, email, phone FROM users WHERE role = 'CUSTOMER'${window("created_at")}`);
+    }
+    if (sources.has("ORDER_CUSTOMERS")) {
+        parts.push(`SELECT 'ORDER_CUSTOMERS' AS src, customer_name, customer_email, customer_phone
+                FROM orders WHERE source = 'ONLINE' AND status <> 'CANCELLED'${window("created_at")}`);
+    }
+    if (sources.has("WALK_IN_CUSTOMERS")) {
+        parts.push(`SELECT 'WALK_IN_CUSTOMERS' AS src, customer_name, customer_email, customer_phone
+                FROM orders WHERE source = 'WALK_IN' AND status <> 'CANCELLED'${window("created_at")}`);
+    }
+    if (sources.has("QUOTE_CONTACTS")) {
+        parts.push(`SELECT 'QUOTE_CONTACTS' AS src, customer_name, customer_email, customer_phone
+                FROM draft_documents WHERE 1 = 1${window("created_at")}`);
+    }
+    if (!parts.length)
+        return [];
+    return query(parts.join(" UNION ALL "), values);
+}
+/** Deduplicated contacts, keyed on phone first so nobody is texted twice. */
+function dedupe(rows) {
     const contacts = new Map();
-    for (const row of [...registered, ...online, ...walkIn, ...quotes]) {
+    for (const row of rows) {
         const phone = smsRecipient(row.phone);
         const email = usableEmail(row.email);
         if (!phone && !email)
@@ -70,6 +85,13 @@ export async function resolveAudience(input) {
         contacts.set(key, { name: row.name?.trim() || null, email, phone });
     }
     return [...contacts.values()];
+}
+export async function resolveAudience(input) {
+    const sources = new Set(input.sources.length ? input.sources : audienceSources);
+    const since = input.lookbackDays && input.lookbackDays > 0
+        ? new Date(Date.now() - input.lookbackDays * 24 * 60 * 60 * 1000)
+        : null;
+    return dedupe(await contactRows(sources, since));
 }
 /** Contacts typed or pasted into the composer, rather than pulled from the database. */
 export function manualContacts(value) {
@@ -91,20 +113,34 @@ export function manualContacts(value) {
     }
     return contacts;
 }
+/**
+ * The reach figures behind the audience picker.
+ *
+ * One query for all four sources, counted in a single pass. This previously issued a
+ * separate query per source and then a fifth for the union - five scans of the same two
+ * tables, with every contact row crossing the wire each time - which is what made the
+ * bulk SMS tab slow to open once there were real customers in it.
+ */
 export async function audienceCounts() {
-    const rows = await Promise.all(audienceSources.map(async (source) => {
-        const contacts = await resolveAudience({ sources: [source] });
-        return [source, {
-                total: contacts.length,
-                withPhone: contacts.filter((contact) => contact.phone).length,
-                withEmail: contacts.filter((contact) => contact.email).length
-            }];
-    }));
-    const all = await resolveAudience({ sources: [...audienceSources] });
-    return {
-        ...Object.fromEntries(rows),
-        ALL: { total: all.length, withPhone: all.filter((c) => c.phone).length, withEmail: all.filter((c) => c.email).length }
-    };
+    // Two minutes. A contact captured moments ago showing up in the picker a little late
+    // costs nothing; making every visit wait for a full contact scan costs the operator.
+    return cached(AUDIENCE_CACHE_KEY, 120_000, computeAudienceCounts);
+}
+const AUDIENCE_CACHE_KEY = "messaging:audience";
+async function computeAudienceCounts() {
+    const rows = await contactRows(new Set(audienceSources), null);
+    const tally = (contacts) => ({
+        total: contacts.length,
+        withPhone: contacts.filter((contact) => contact.phone).length,
+        withEmail: contacts.filter((contact) => contact.email).length
+    });
+    const counts = {};
+    for (const source of audienceSources) {
+        counts[source] = tally(dedupe(rows.filter((row) => row.src === source)));
+    }
+    // Deduplicated across sources as well, because one person routinely appears in several.
+    counts.ALL = tally(dedupe(rows));
+    return counts;
 }
 export async function emailBrand() {
     const [settings] = await query("SELECT store_name, support_email, whatsapp_phone FROM site_settings WHERE id = 'default' LIMIT 1");
@@ -200,6 +236,11 @@ async function runCampaign(campaignId, input, phones, emails, contacts) {
     await execute(`UPDATE message_campaigns
      SET status = ?, success_count = ?, failure_count = ?, detail = ?, finished_at = CURRENT_TIMESTAMP
      WHERE id = ?`, [failure && !success ? "FAILED" : failure ? "PARTIAL" : "SENT", success, failure, notes.join(" ").slice(0, 255) || null, campaignId]);
+    // A campaign has just spent credit, so the cached figure is known to be wrong. Dropped
+    // rather than left to expire, or the operator would check the balance straight after a
+    // send and be shown what it was beforehand.
+    if (phones.length)
+        invalidate("sms:balance");
 }
 export async function campaignHistory(limit = 30) {
     const rows = await query("SELECT * FROM message_campaigns ORDER BY created_at DESC LIMIT ?", [Math.min(Math.max(limit, 1), 100)]);

@@ -2150,17 +2150,30 @@ summary {
   gap: 18px;
   border-bottom: 1px solid var(--line);
   background: #fff;
-  padding: 24px 28px;
+  /* Compact by intent: this bar repeats above the content on every admin page, so it
+     identifies the page and then gets out of the way. */
+  padding: 14px 24px;
   box-shadow: 0 1px 0 rgba(29, 36, 51, 0.04);
 }
 
 .admin-topbar h1 {
   margin: 0;
+  font-size: clamp(19px, 1.9vw, 23px);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
+/* One line only. A wrapping subtitle pushed the content down by a whole row, and the
+   second line was never the half that mattered. */
 .admin-topbar p {
-  margin: 6px 0 0;
+  overflow: hidden;
+  max-width: 68ch;
+  margin: 2px 0 0;
   color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-topbar-title {
@@ -4689,8 +4702,7 @@ summary:focus-visible {
   /* The page header costs about a third of a phone screen before any content starts:
      "Admin" repeats what the bar above already says, and the subtitle explains a screen
      the operator has just chosen and is looking at. Both are desktop affordances. */
-  .admin-topbar .eyebrow,
-  .admin-topbar-title p:not(.eyebrow) {
+  .admin-topbar-title p {
     display: none;
   }
 
@@ -5929,4 +5941,77 @@ a.dashboard-metric:hover { border-color: #c7d3e4; }
   .sms-field-row { grid-template-columns: 1fr; }
   .sms-toolbar { flex-direction: column; align-items: stretch; }
   .sms-toolbar button { width: 100%; }
+}
+
+/* ---------------------------------------------------------------------------
+   Bulk SMS tables on small screens.
+
+   The shared .admin-table-row forces min-width 760px, which turns the delivery log
+   into a horizontally scrolling strip on a phone - the one place it is most often
+   read. Below 760px each row becomes a small card instead: who and what happened on
+   the first line, the message on the second, the details underneath. The markup is
+   unchanged; only the grid placement moves.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .sms-message-row.heading,
+  .sms-campaign-row.heading {
+    display: none;
+  }
+
+  .admin-table-row.sms-message-row,
+  .admin-table-row.sms-campaign-row {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 2px 10px;
+    padding: 12px;
+  }
+
+  /* Order of children as authored: time, recipient, reason, message, parts, status. */
+  .sms-message-row > :nth-child(2) { order: 1; grid-column: 1; font-weight: 700; }
+  .sms-message-row > :nth-child(6) { order: 2; grid-column: 2 / -1; justify-self: end; }
+  .sms-message-row > :nth-child(4) {
+    order: 3;
+    grid-column: 1 / -1;
+    margin: 4px 0 6px;
+    white-space: normal;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .sms-message-row > :nth-child(1) { order: 4; grid-column: 1; color: #667085; font-size: 11px; }
+  .sms-message-row > :nth-child(3) { order: 5; grid-column: 2; color: #667085; font-size: 11px; }
+  .sms-message-row > :nth-child(5) { order: 6; grid-column: 3; color: #667085; font-size: 11px; }
+
+  /* Campaigns: name and status first, then the counts on one line beneath. */
+  .sms-campaign-row > :nth-child(1) { order: 1; grid-column: 1; }
+  .sms-campaign-row > :nth-child(6) { order: 2; grid-column: 2 / -1; justify-self: end; }
+  .sms-campaign-row > :nth-child(2) { order: 3; grid-column: 1 / -1; margin-top: 6px; color: #667085; font-size: 11px; }
+  .sms-campaign-row > :nth-child(3),
+  .sms-campaign-row > :nth-child(4),
+  .sms-campaign-row > :nth-child(5) { order: 4; grid-column: auto; font-size: 12px; }
+}
+
+/* In-page skeleton rows, used inside a Suspense fallback while a section streams.
+   Reuses the same sheen as the route-level skeleton so the two do not read as
+   different states of the app. */
+.admin-row-skeleton > span,
+.admin-card-skeleton {
+  display: block;
+  height: 13px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #edf2f7 0%, #ffffff 48%, #edf2f7 100%);
+  background-size: 220% 100%;
+  animation: loading-sheen 1.2s ease-in-out infinite;
+}
+
+.admin-row-skeleton > span:first-child { height: 15px; }
+.admin-card-skeleton { height: 92px; border-radius: 10px; }
+.admin-skeleton-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
+
+/* Nothing in a placeholder should be announced or focusable. */
+[aria-busy="true"] .admin-row-skeleton { pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-row-skeleton > span,
+  .admin-card-skeleton { animation: none; }
 }

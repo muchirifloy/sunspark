@@ -86,7 +86,8 @@ export async function AdminLayout({
           <div className="admin-topbar-title">
             <AdminBackButton />
             <div>
-              <p className="eyebrow">Admin</p>
+              {/* No "Admin" eyebrow: the sidebar says it on every page already, and it
+                  cost a line of height at the top of all of them. */}
               <h1>{title}</h1>
               {subtitle ? <p>{subtitle}</p> : null}
             </div>

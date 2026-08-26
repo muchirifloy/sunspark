@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { MessageComposer, type AudienceCounts } from "@/components/admin/message-composer";
 import { apiFetch } from "@/lib/api/client";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -102,13 +104,12 @@ export default async function BulkSmsPage({
   // Not merely hidden: a staff member typing ?view=bulk lands back on the reports tab,
   // and sendCampaignAction refuses again on the server even if the form is replayed.
   const view = !isOwner && (requested === "bulk" || requested === "email") ? "reports" : requested;
-  const { overview, reachable } = await getOverview();
   const feedback = params?.error ? params.message ?? "The request could not be completed." : params?.notice ?? null;
 
   return (
     <AdminLayout
       title="Bulk SMS"
-      subtitle="Order texts, promotional campaigns, and what the gateway said about every message."
+      subtitle="Order texts, campaigns, and delivery results."
     >
       <nav className="report-tabs" aria-label="Messaging section">
         <Link className={view === "reports" ? "active" : ""} href="/admin/sms">Reports & balance</Link>
@@ -118,15 +119,30 @@ export default async function BulkSmsPage({
       </nav>
 
       {feedback ? <p className={`admin-feedback ${params?.error ? "error" : "success"}`} role="status">{feedback}</p> : null}
+
+      {/* Tabs and the page frame paint at once. The balance is a round trip to Celcom
+          and the log is a table scan, so both stream in behind them. */}
+      <AdminSectionErrorBoundary message="The messaging data could not be loaded. Reload to try again.">
+        <Suspense fallback={<MessagingSkeleton view={view} />} key={`${view}-${params?.channel ?? ""}`}>
+          <MessagingSection channel={params?.channel} isOwner={isOwner} view={view} />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+async function MessagingSection({ channel, isOwner, view }: { channel?: string; isOwner: boolean; view: View }) {
+  const { overview, reachable } = await getOverview();
+
+  return (
+    <>
       {reachable ? <ConfigurationNotice configuration={overview.configuration} /> : (
         <p className="admin-feedback error" role="status">
-          The backend did not answer, so nothing below could be read. The balance, the log and the
-          settings are blank because they are unknown - not because they are empty or unconfigured.
-          Check that the API service is running and can reach its database, then reload.
+          Backend not reachable — figures below are unknown, not empty.
         </p>
       )}
 
-      {view === "reports" ? <Reports channel={params?.channel} overview={overview} /> : null}
+      {view === "reports" ? <Reports channel={channel} overview={overview} /> : null}
       {view === "bulk" ? (
         <MessageComposer
           action={sendCampaignAction}
@@ -161,27 +177,41 @@ export default async function BulkSmsPage({
           website={overview.brand.website}
         />
       ) : null}
-    </AdminLayout>
+    </>
+  );
+}
+
+function MessagingSkeleton({ view }: { view: View }) {
+  if (view !== "reports") return <div className="sms-composer admin-card-skeleton" aria-busy="true" style={{ height: 320 }} />;
+
+  return (
+    <div aria-busy="true">
+      <div className="sms-cards">
+        {[0, 1, 2, 3].map((card) => <span className="admin-card-skeleton" key={card} />)}
+      </div>
+      <div className="admin-table" style={{ marginTop: 18 }}>
+        {[0, 1, 2, 3, 4].map((row) => (
+          <div className="admin-table-row sms-message-row admin-row-skeleton" key={row}>
+            <span /><span /><span /><span /><span /><span />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
 function ConfigurationNotice({ configuration }: { configuration: MessagingOverview["configuration"] }) {
   if (!configuration.configured) {
-    return (
-      <p className="admin-feedback error" role="status">
-        SMS is not configured. Add CELCOM_SMS_API_KEY, CELCOM_SMS_PARTNER_ID, and a sender ID to the API environment,
-        then restart the API. Nothing is sent until all three are set.
-      </p>
-    );
+    return <p className="admin-feedback error" role="status">SMS not configured.</p>;
   }
 
+  // Kept to a glance. The operator needs to know what is off, not how it is configured -
+  // the long explanation belongs in apps/api/.env.example, where the fix is applied.
   const warnings = [
-    configuration.dryRun ? "Dry run is on: messages are composed and logged but never sent." : "",
-    !configuration.transactionalEnabled ? "Order texts are switched off." : "",
-    !configuration.marketingEnabled ? "Promotional sends are switched off." : "",
-    !configuration.promotionalReady
-      ? "No promotional sender ID is set, so bulk and promotional sends are blocked. Order texts are unaffected. Set CELCOM_SMS_SENDER_ID_PROMOTIONAL in the API environment once Celcom issues the shortcode - marketing is never sent under the transactional one."
-      : ""
+    configuration.dryRun ? "Dry run on — nothing is sent." : "",
+    !configuration.transactionalEnabled ? "Order texts off." : "",
+    !configuration.marketingEnabled ? "Promotional sends off." : "",
+    !configuration.promotionalReady ? "Promotional sender ID not configured." : ""
   ].filter(Boolean);
 
   if (!warnings.length) return null;
@@ -203,7 +233,7 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
         <article className="sms-card balance">
           <span>SMS balance</span>
           <strong>{credit ?? "Unavailable"}</strong>
-          <small>{credit ? "Credits remaining on the Celcom account" : "Celcom did not return a balance. Check the credentials, then refresh this page."}</small>
+          <small>{credit ? "Celcom credits remaining" : "Balance could not be read"}</small>
         </article>
 
         <article className="sms-card recharge">
@@ -212,19 +242,19 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
             <div><dt>Paybill</dt><dd>{overview.topUp.paybill}</dd></div>
             <div><dt>Account</dt><dd>{overview.topUp.account}</dd></div>
           </dl>
-          <a href={overview.topUp.url} rel="noreferrer noopener" target="_blank">Open Celcom portal</a>
+          <a href={overview.topUp.url} rel="noreferrer noopener" target="_blank">Celcom portal &rarr;</a>
         </article>
 
         <article className="sms-card">
-          <span>Sent in 30 days</span>
+          <span>Sent · 30 days</span>
           <strong>{totalSegments}</strong>
-          <small>{segments.TRANSACTIONAL ?? 0} order texts, {segments.PROMOTIONAL ?? 0} promotional. Counted in billed segments, not messages.</small>
+          <small>{segments.TRANSACTIONAL ?? 0} order &middot; {segments.PROMOTIONAL ?? 0} promotional &middot; billed segments</small>
         </article>
 
         <article className="sms-card">
-          <span>Delivery</span>
-          <strong>{delivered} delivered</strong>
-          <small>{failed} failed or not delivered in the last 30 days.</small>
+          <span>Delivered · 30 days</span>
+          <strong>{delivered}</strong>
+          <small>{failed} failed or undelivered</small>
         </article>
       </div>
 
@@ -235,7 +265,7 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
           <Link className={filter === "PROMOTIONAL" ? "active" : ""} href="/admin/sms?channel=PROMOTIONAL">Promotional</Link>
         </div>
         <form action={refreshDeliveryReportsAction}>
-          <button type="submit">Refresh delivery reports</button>
+          <button type="submit">Refresh statuses</button>
         </form>
       </div>
 

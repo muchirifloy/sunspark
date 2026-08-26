@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { PendingButton } from "@/components/ui/pending-button";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
@@ -16,8 +18,6 @@ export default async function AdminCampaignsPage({
 }) {
   await requireOwnerAdmin();
   const params = await searchParams;
-  const campaigns = await getCampaigns({ q: params?.q, status: params?.status });
-  const editingCampaign = campaigns.find((campaign) => campaign.id === params?.edit);
 
   return (
     <AdminLayout title="Campaigns" subtitle="Create storefront promotions for deals, seasonal offers, and featured pushes.">
@@ -57,6 +57,23 @@ export default async function AdminCampaignsPage({
         </form>
       </section>
 
+      {/* The frame and the "create campaign" form need no data, so they paint at once.
+          Only the edit panel and the list below wait on the backend. */}
+      <AdminSectionErrorBoundary message="Campaigns could not be loaded. This is a connection problem, not an empty list. Reload to try again.">
+        <Suspense fallback={<div className="campaign-admin-list" aria-busy="true"><span className="admin-card-skeleton" /><span className="admin-card-skeleton" /><span className="admin-card-skeleton" /></div>}>
+          <CampaignData edit={params?.edit} q={params?.q} status={params?.status} />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+async function CampaignData({ edit, q, status }: { edit?: string; q?: string; status?: string }) {
+  const campaigns = await getCampaigns({ q, status });
+  const editingCampaign = campaigns.find((campaign) => campaign.id === edit);
+
+  return (
+    <>
       {editingCampaign ? (
         <section className="campaign-edit-shell" id="edit-campaign">
           <div className="campaign-editor-heading">
@@ -113,7 +130,7 @@ export default async function AdminCampaignsPage({
         ))}
         {!campaigns.length ? <p className="empty-state">No campaigns yet. Create the first active offer.</p> : null}
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

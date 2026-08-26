@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { requireAdmin } from "@/lib/auth/guards";
 import { apiFetch } from "@/lib/api/client";
 import { formatMoney } from "@/lib/money";
@@ -23,9 +25,6 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
   const view = (["stock", "customers"].includes(String(params?.view)) ? params?.view : "sales") as ReportView;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params?.date ?? "") ? params!.date! : new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
   const feedback = params?.error ? params.message ?? messages[params.error] : params?.notice ? messages[params.notice] : null;
-  const report = view === "sales" ? await getDailyReport(date) : null;
-  const stock = view === "stock" ? await getStockReport() : null;
-  const customers = view === "customers" ? await getCustomerReport() : null;
 
   return <AdminLayout title="Reports" subtitle="Review sales, profit, stock health, and customer activity from live store records.">
     <nav className="report-tabs" aria-label="Report type">
@@ -34,10 +33,39 @@ export default async function ReportsPage({ searchParams }: { searchParams?: Pro
       <Link className={view === "customers" ? "active" : ""} href="/admin/reports?view=customers">Customer report</Link>
     </nav>
     {feedback ? <p className={`admin-feedback ${params?.error ? "error" : "success"}`} role="status">{feedback}</p> : null}
-    {report ? <SalesReport date={date} report={report} /> : null}
-    {stock ? <StockReport report={stock} /> : null}
-    {customers ? <CustomerReport customers={customers} /> : null}
+    {/* The tabs switch instantly; the report itself streams in behind them, so moving
+        between reports no longer blanks the screen while a query runs. */}
+    <AdminSectionErrorBoundary message="The report could not be loaded. This is a connection problem, not an empty report. Reload to try again.">
+      <Suspense fallback={<ReportSkeleton />} key={`${view}-${date}`}>
+        <ReportBody date={date} view={view} />
+      </Suspense>
+    </AdminSectionErrorBoundary>
   </AdminLayout>;
+}
+
+async function ReportBody({ date, view }: { date: string; view: ReportView }) {
+  if (view === "stock") return <StockReport report={await getStockReport()} />;
+  if (view === "customers") return <CustomerReport customers={await getCustomerReport()} />;
+  return <SalesReport date={date} report={await getDailyReport(date)} />;
+}
+
+function ReportSkeleton() {
+  return (
+    <div aria-busy="true">
+      <div className="admin-stats report-stats admin-skeleton-grid">
+        <span className="admin-card-skeleton" />
+        <span className="admin-card-skeleton" />
+        <span className="admin-card-skeleton" />
+      </div>
+      <div className="admin-table">
+        {[0, 1, 2, 3, 4].map((row) => (
+          <div className="admin-table-row report-row admin-row-skeleton" key={row}>
+            <span /><span /><span /><span /><span />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SalesReport({ date, report }: { date: string; report: Awaited<ReturnType<typeof getDailyReport>> }) {

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { cache, Suspense, type ReactNode } from "react";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { DashboardCategoryCard } from "@/components/admin/dashboard-category-card";
 import { DashboardSalesCard, type ChartPeriod, type SalesBucket } from "@/components/admin/dashboard-sales-card";
@@ -76,14 +77,6 @@ async function AdminDashboard({
   params?: { error?: string };
   preview?: boolean;
 }) {
-  const [overview, days, weeks, months] = await Promise.all([
-    getOverview(),
-    getSalesSummary("days"),
-    getSalesSummary("weeks"),
-    getSalesSummary("months"),
-  ]);
-  const metrics = overview.metrics;
-
   return (
     <AdminLayout
       title="Overview"
@@ -94,6 +87,46 @@ async function AdminDashboard({
     >
       {params?.error === "permission" ? <p className="admin-feedback error" role="alert">This section is restricted to the owner admin account.</p> : null}
 
+      <AdminSectionErrorBoundary message="The dashboard figures could not be loaded. Reload to try again.">
+        <Suspense fallback={<MetricsSkeleton />}>
+          <DashboardMetrics />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+
+      <div className="dashboard-grid dashboard-grid-primary">
+        <AdminSectionErrorBoundary message="The sales chart could not be loaded.">
+          <Suspense fallback={<div className="dashboard-card admin-card-skeleton" />}>
+            <SalesChart />
+          </Suspense>
+        </AdminSectionErrorBoundary>
+        <AdminSectionErrorBoundary message="Category sales could not be loaded.">
+          <Suspense fallback={<div className="dashboard-card admin-card-skeleton" />}>
+            <CategoryBreakdown />
+          </Suspense>
+        </AdminSectionErrorBoundary>
+      </div>
+
+      <AdminSectionErrorBoundary message="The dashboard lists could not be loaded.">
+        <Suspense fallback={<div className="dashboard-grid dashboard-grid-secondary"><div className="dashboard-card admin-card-skeleton" /><div className="dashboard-card admin-card-skeleton" /><div className="dashboard-card admin-card-skeleton" /></div>}>
+          <DashboardLists />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+/**
+ * Each block below fetches what it needs and nothing more.
+ *
+ * getOverview is wrapped in React's cache(), so the four blocks that want it share a
+ * single request per render rather than issuing four - splitting the page for streaming
+ * must not quadruple the load on the API.
+ */
+async function DashboardMetrics() {
+  const overview = await getOverview();
+  const metrics = overview.metrics;
+
+  return (
       <section className="dashboard-metrics" aria-label="Last seven days">
         <DashboardMetric accent="purple" change={change(metrics.salesCents, metrics.previousSalesCents)} label="Total sales" value={formatMoney(metrics.salesCents)} />
         <DashboardMetric accent="green" change={change(metrics.orders, metrics.previousOrders)} label="Total orders" value={String(metrics.orders)} />
@@ -108,13 +141,27 @@ async function AdminDashboard({
           value={String(overview.sms.messages7Days)}
         />
       </section>
+  );
+}
 
-      <div className="dashboard-grid dashboard-grid-primary">
-        <DashboardSalesCard summaries={{ days: days.buckets, weeks: weeks.buckets, months: months.buckets }} />
+async function SalesChart() {
+  const [days, weeks, months] = await Promise.all([
+    getSalesSummary("days"),
+    getSalesSummary("weeks"),
+    getSalesSummary("months")
+  ]);
+  return <DashboardSalesCard summaries={{ days: days.buckets, weeks: weeks.buckets, months: months.buckets }} />;
+}
 
-        <DashboardCategoryCard categories={overview.categories} />
-      </div>
+async function CategoryBreakdown() {
+  const overview = await getOverview();
+  return <DashboardCategoryCard categories={overview.categories} />;
+}
 
+async function DashboardLists() {
+  const overview = await getOverview();
+
+  return (
       <div className="dashboard-grid dashboard-grid-secondary">
         <section className="dashboard-card">
           <DashboardCardHeader title="Recent orders"><Link className="dashboard-view-link" href="/admin/orders">View all</Link></DashboardCardHeader>
@@ -150,7 +197,14 @@ async function AdminDashboard({
           <InventoryHealth inventory={overview.inventory} />
         </section>
       </div>
-    </AdminLayout>
+  );
+}
+
+function MetricsSkeleton() {
+  return (
+    <section className="dashboard-metrics" aria-busy="true">
+      {[0, 1, 2, 3, 4, 5].map((card) => <span className="admin-card-skeleton" key={card} />)}
+    </section>
   );
 }
 
@@ -207,9 +261,8 @@ function change(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-async function getOverview() {
-  return apiFetch<DashboardOverview>("/admin/dashboard-overview").catch(() => emptyOverview);
-}
+const getOverview = cache(async () =>
+  apiFetch<DashboardOverview>("/admin/dashboard-overview").catch(() => emptyOverview));
 
 async function getSalesSummary(period: ChartPeriod) {
   return apiFetch<{ period: ChartPeriod; buckets: SalesBucket[] }>(`/admin/sales-summary${toQueryString({ period })}`).catch(() => ({ period, buckets: [] }));

@@ -15,6 +15,7 @@
  * getbalance with an empty body when it is present.
  */
 
+import { cached } from "./cache.js";
 import { execute, query } from "./db.js";
 import { env } from "./env.js";
 import { id } from "./id.js";
@@ -207,12 +208,12 @@ function isTransient(error: unknown) {
     || ["ENOTFOUND", "ECONNRESET", "ECONNREFUSED", "EAI_AGAIN", "ETIMEDOUT", "EPIPE", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"].includes(code);
 }
 
-async function postJson(url: string, body: Record<string, unknown>, timeoutMs = 15_000) {
-  // One retry, because a momentary blip should not silently cost a customer their order
-  // confirmation. Anything Celcom actually answered is never retried.
+async function postJson(url: string, body: Record<string, unknown>, timeoutMs = 15_000, attempts = 2) {
+  // One retry by default, because a momentary blip should not silently cost a customer
+  // their order confirmation. Anything Celcom actually answered is never retried.
   let lastError: unknown;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt) await new Promise((resolve) => setTimeout(resolve, 1200));
     try {
       const response = await fetch(url, {
@@ -234,7 +235,7 @@ async function postJson(url: string, body: Record<string, unknown>, timeoutMs = 
     }
   }
 
-  throw new Error(`${networkReason(lastError)} after 2 attempts`);
+  throw new Error(`${networkReason(lastError)} after ${attempts} attempt${attempts === 1 ? "" : "s"}`);
 }
 
 /**
@@ -444,12 +445,21 @@ export async function smsDeliveryReport(messageId: string) {
 export async function smsBalance() {
   const configuration = smsConfiguration();
   if (!configuration) return null;
+  // A minute old is as useful as fresh - the balance only moves when messages go out -
+  // and it means opening the tab never waits on Celcom.
+  return cached("sms:balance", 60_000, () => fetchBalance(configuration));
+}
 
+async function fetchBalance(configuration: SmsConfiguration) {
   try {
+    // Short, and no retry. This is one figure on a dashboard, fetched while an operator
+    // waits: the storefront abandons the whole page at 12s, so a 15s timeout with a
+    // retry behind it - 31s at worst - turned a slow gateway into a broken admin tab.
+    // "Unavailable" is a fine outcome for a balance; a stalled page is not.
     return await postJson(configuration.balanceUrl, {
       apikey: configuration.apiKey,
       partnerID: configuration.partnerId
-    });
+    }, 4_000, 1);
   } catch (error) {
     console.error("SMS balance check failed", { error });
     return null;

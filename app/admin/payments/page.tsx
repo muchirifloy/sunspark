@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { OrderStatusControls } from "@/components/admin/order-status-controls";
 import type { Order, PaymentMethod, PaymentStatus } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth/guards";
@@ -18,11 +20,6 @@ export default async function AdminPaymentsPage({
 }) {
   await requireAdmin();
   const params = await searchParams;
-  const orders = await getPaymentOrders({
-    method: params?.method,
-    paymentStatus: params?.paymentStatus,
-    q: params?.q
-  });
 
   return (
     <AdminLayout title="Payments" subtitle="Verify payments and mark WhatsApp/M-Pesa orders as paid, failed, or pending.">
@@ -44,15 +41,22 @@ export default async function AdminPaymentsPage({
         </select>
         <button type="submit">Filter</button>
       </form>
+      {/* Filters are usable the instant the page paints; only the rows wait. */}
+      <AdminSectionErrorBoundary message="The payment list could not be loaded. This is a connection problem, not an empty list. Reload to try again.">
+        <Suspense fallback={<PaymentsSkeleton />}>
+          <PaymentRows method={params?.method} paymentStatus={params?.paymentStatus} q={params?.q} />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+async function PaymentRows({ method, paymentStatus, q }: { method?: string; paymentStatus?: string; q?: string }) {
+  const orders = await getPaymentOrders({ method, paymentStatus, q });
+
+  return (
       <div className="admin-table">
-        <div className="admin-table-row payment-heading">
-          <span>Order</span>
-          <span>Method</span>
-          <span>Amount</span>
-          <span>Payment Status</span>
-          <span>Order Status</span>
-          <span>Verify</span>
-        </div>
+        <PaymentHeading />
         {orders.map((order) => (
           <div className="admin-table-row payment-row" key={order.id}>
             <strong>{order.orderNumber}</strong>
@@ -63,7 +67,32 @@ export default async function AdminPaymentsPage({
         ))}
         {!orders.length ? <p className="empty-state">No payments to verify yet.</p> : null}
       </div>
-    </AdminLayout>
+  );
+}
+
+function PaymentHeading() {
+  return (
+    <div className="admin-table-row payment-heading">
+      <span>Order</span>
+      <span>Method</span>
+      <span>Amount</span>
+      <span>Payment Status</span>
+      <span>Order Status</span>
+      <span>Verify</span>
+    </div>
+  );
+}
+
+function PaymentsSkeleton() {
+  return (
+    <div className="admin-table" aria-busy="true">
+      <PaymentHeading />
+      {[0, 1, 2, 3, 4].map((row) => (
+        <div className="admin-table-row payment-row admin-row-skeleton" key={row}>
+          <span /><span /><span /><span /><span /><span />
+        </div>
+      ))}
+    </div>
   );
 }
 

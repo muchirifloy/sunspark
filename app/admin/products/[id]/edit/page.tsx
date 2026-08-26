@@ -48,7 +48,7 @@ export default async function EditProductPage({
 
 async function getProduct(id: string) {
   try {
-    return apiFetch<Product>(`/admin/products/${id}`);
+    return await apiFetch<Product>(`/admin/products/${id}`);
   } catch {
     return null;
   }
@@ -56,7 +56,7 @@ async function getProduct(id: string) {
 
 async function getCategories() {
   try {
-    return apiFetch<Category[]>("/categories");
+    return await apiFetch<Category[]>("/categories");
   } catch {
     return [];
   }

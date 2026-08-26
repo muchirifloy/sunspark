@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
 import { CategoryForm } from "@/components/admin/category-form";
 import { createCategoryAction, deleteCategoryAction, hideCategoryAction } from "@/app/admin/categories/actions";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
@@ -27,7 +29,6 @@ export default async function AdminCategoriesPage({
 }) {
   await requireOwnerAdmin("/admin/categories");
   const params = await searchParams;
-  const categories = await getCategories({ q: params?.q, status: params?.status });
   const feedback = params?.error ? params.message ?? messages[params.error] : params?.notice ? messages[params.notice] : null;
 
   return (
@@ -46,10 +47,22 @@ export default async function AdminCategoriesPage({
         <summary>Add category</summary>
         <CategoryForm action={createCategoryAction} />
       </details>
+      {/* The filter and the add-category form are usable at once; the list streams. */}
+      <AdminSectionErrorBoundary message="The category list could not be loaded. This is a connection problem, not an empty catalogue. Reload to try again.">
+        <Suspense fallback={<CategoriesSkeleton />}>
+          <CategoryRows q={params?.q} status={params?.status} />
+        </Suspense>
+      </AdminSectionErrorBoundary>
+    </AdminLayout>
+  );
+}
+
+async function CategoryRows({ q, status }: { q?: string; status?: string }) {
+  const categories = await getCategories({ q, status });
+
+  return (
       <div className="admin-table">
-        <div className="admin-table-row category-admin-row heading">
-          <span>Category</span><span>Products</span><span>Images</span><span>Status</span><span>Updated</span><span />
-        </div>
+        <CategoryHeading />
         {categories.map((category) => (
           <div className="admin-table-row category-admin-row" key={category.id}>
             <strong>{category.name}<small>{category.description ?? "No description"}</small></strong>
@@ -72,7 +85,27 @@ export default async function AdminCategoriesPage({
         ))}
         {!categories.length ? <p className="empty-state">No categories match this filter.</p> : null}
       </div>
-    </AdminLayout>
+  );
+}
+
+function CategoryHeading() {
+  return (
+    <div className="admin-table-row category-admin-row heading">
+      <span>Category</span><span>Products</span><span>Images</span><span>Status</span><span>Updated</span><span />
+    </div>
+  );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div className="admin-table" aria-busy="true">
+      <CategoryHeading />
+      {[0, 1, 2, 3, 4].map((row) => (
+        <div className="admin-table-row category-admin-row admin-row-skeleton" key={row}>
+          <span /><span /><span /><span /><span /><span />
+        </div>
+      ))}
+    </div>
   );
 }
 
