@@ -7,6 +7,7 @@ import cors from "cors";
 import express from "express";
 import { z } from "zod";
 import { execute, query, transaction } from "./db.js";
+import { customerSummaries } from "./customer-summaries.js";
 import { sendEmail } from "./email.js";
 import { describeEnvironment, env } from "./env.js";
 import { id } from "./id.js";
@@ -863,10 +864,11 @@ app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
        WHERE o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
          AND o.status <> 'CANCELLED'`),
         query(`SELECT
+         COUNT(*) AS totalCustomers,
          COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS currentCustomers,
          COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 END) AS previousCustomers
        FROM users
-       WHERE role = 'CUSTOMER' AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)`),
+       WHERE role = 'CUSTOMER'`),
         query(`SELECT COALESCE(c.name, 'Other') AS name,
          COALESCE(SUM(oi.total_cents), 0) AS salesCents,
          COALESCE(SUM(oi.quantity), 0) AS units
@@ -913,7 +915,8 @@ app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
             previousProfitCents: Number(sales?.previousProfitCents ?? 0),
             orders: currentOrders,
             previousOrders: Number(sales?.previousOrders ?? 0),
-            customers: Number(customers?.currentCustomers ?? 0),
+            customers: Number(customers?.totalCustomers ?? 0),
+            newCustomers7Days: Number(customers?.currentCustomers ?? 0),
             previousCustomers: Number(customers?.previousCustomers ?? 0),
             averageOrderCents: currentOrders ? Math.round(currentSalesCents / currentOrders) : 0
         },
@@ -945,14 +948,21 @@ app.get("/admin/customers", asyncRoute(async (request, response) => {
         where.push("(name LIKE ? OR email LIKE ? OR phone LIKE ?)");
         values.push(`%${q}%`, `%${q}%`, `%${q}%`);
     }
-    const rows = await query(`SELECT u.id, u.name, u.email, u.phone, u.role, u.created_at AS createdAt, u.updated_at AS updatedAt,
-       COUNT(o.id) AS orders, COALESCE(SUM(CASE WHEN o.status <> 'CANCELLED' THEN o.total_cents ELSE 0 END), 0) AS spentCents
-     FROM users u
-     LEFT JOIN orders o ON o.user_id = u.id
-     WHERE ${where.map((condition) => condition.replace(/\b(role|name|email|phone)\b/g, "u.$1")).join(" AND ")}
-     GROUP BY u.id, u.name, u.email, u.phone, u.role, u.created_at, u.updated_at
-     ORDER BY u.created_at DESC LIMIT 200`, values);
-    response.json(rows);
+    const customers = await query(`SELECT id, name, email, phone, role, created_at AS createdAt
+     FROM users
+     WHERE ${where.join(" AND ")}
+     ORDER BY created_at DESC
+     LIMIT 200`, values);
+    const customerIds = customers.map((customer) => customer.id);
+    const orderStats = customerIds.length
+        ? await query(`SELECT user_id AS userId,
+           COUNT(*) AS orders,
+           COALESCE(SUM(CASE WHEN status <> 'CANCELLED' THEN total_cents ELSE 0 END), 0) AS spentCents
+         FROM orders
+         WHERE user_id IN (${customerIds.map(() => "?").join(", ")})
+         GROUP BY user_id`, customerIds)
+        : [];
+    response.json(customerSummaries(customers, orderStats));
 }));
 app.post("/admin/categories", asyncRoute(async (request, response) => {
     const input = z.object({

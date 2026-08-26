@@ -130,5 +130,5 @@ async function getStockReport() {
 }
 
 async function getCustomerReport() {
-  return apiFetch<ReportCustomer[]>("/admin/customers").catch(() => []);
+  return apiFetch<ReportCustomer[]>("/admin/customers");
 }

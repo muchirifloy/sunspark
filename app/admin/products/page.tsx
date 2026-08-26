@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AdminLayout } from "@/components/admin/admin-layout";
 import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-error-boundary";
+import { ProductFilters } from "@/components/admin/product-filters";
 import { requireAdmin } from "@/lib/auth/guards";
 import { canManageCatalog } from "@/lib/auth/roles";
 import { apiFetch, toQueryString } from "@/lib/api/client";
@@ -55,23 +56,11 @@ export default async function AdminProductsPage({
       }
     >
         {feedback ? <p className={params?.error ? "admin-feedback error" : "admin-feedback success"} role="status">{feedback}</p> : null}
-        <form action="/admin/products" className="admin-filter">
-          <input name="q" defaultValue={params?.q ?? ""} placeholder="Search product, brand, description..." />
-          <select name="category" defaultValue={params?.category ?? ""}>
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option value={category.slug} key={category.id}>{category.name}</option>
-            ))}
-          </select>
-          <select name="status" defaultValue={params?.status ?? ""}>
-            <option value="">All status</option>
-            <option value="active">Active</option>
-            <option value="hidden">Hidden</option>
-            <option value="low">Low stock</option>
-          </select>
-          <button type="submit">Filter</button>
-          <Link className="filter-reset" href="/admin/products">All products</Link>
-        </form>
+        <ProductFilters
+          categories={categories}
+          initial={{ q: params?.q, category: params?.category, status: params?.status }}
+          key={`${params?.q ?? ""}-${params?.category ?? ""}-${params?.status ?? ""}`}
+        />
         {/* Filters and the "add product" button are usable at once; the catalogue
             itself streams in, which is the part that takes the time. */}
         <AdminSectionErrorBoundary message="The product list could not be loaded. This is a connection problem, not an empty catalogue. Reload to try again.">

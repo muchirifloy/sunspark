@@ -19,6 +19,7 @@ type DashboardOverview = {
     orders: number;
     previousOrders: number;
     customers: number;
+    newCustomers7Days: number;
     previousCustomers: number;
     averageOrderCents: number;
   };
@@ -36,25 +37,6 @@ type DashboardOverview = {
     segments30Days: number;
     failed30Days: number;
   };
-};
-
-const emptyOverview: DashboardOverview = {
-  metrics: {
-    salesCents: 0,
-    previousSalesCents: 0,
-    profitCents: 0,
-    previousProfitCents: 0,
-    orders: 0,
-    previousOrders: 0,
-    customers: 0,
-    previousCustomers: 0,
-    averageOrderCents: 0
-  },
-  categories: [],
-  topProducts: [],
-  recentOrders: [],
-  inventory: { total: 0, healthy: 0, low: 0, outOfStock: 0 },
-  sms: { configured: false, promotionalReady: false, dryRun: false, messages7Days: 0, segments7Days: 0, messages30Days: 0, segments30Days: 0, failed30Days: 0 }
 };
 
 export default async function AdminDashboardPage({
@@ -127,14 +109,13 @@ async function DashboardMetrics() {
   const metrics = overview.metrics;
 
   return (
-      <section className="dashboard-metrics" aria-label="Last seven days">
-        <DashboardMetric accent="purple" change={change(metrics.salesCents, metrics.previousSalesCents)} label="Total sales" value={formatMoney(metrics.salesCents)} />
-        <DashboardMetric accent="green" change={change(metrics.orders, metrics.previousOrders)} label="Total orders" value={String(metrics.orders)} />
-        <DashboardMetric accent="orange" change={change(metrics.profitCents, metrics.previousProfitCents)} label="Gross profit" value={formatMoney(metrics.profitCents)} />
-        <DashboardMetric accent="blue" change={change(metrics.customers, metrics.previousCustomers)} label="New customers" value={String(metrics.customers)} />
-        <DashboardMetric accent="navy" label="Avg. order value" value={formatMoney(metrics.averageOrderCents)} />
+      <section className="dashboard-metrics" aria-label="Store summary">
+        <DashboardMetric change={change(metrics.salesCents, metrics.previousSalesCents)} label="Total sales" value={formatMoney(metrics.salesCents)} />
+        <DashboardMetric change={change(metrics.orders, metrics.previousOrders)} label="Total orders" value={String(metrics.orders)} />
+        <DashboardMetric change={change(metrics.profitCents, metrics.previousProfitCents)} label="Gross profit" value={formatMoney(metrics.profitCents)} />
+        <DashboardMetric label="Online customers" note={`${metrics.newCustomers7Days ?? 0} new in 7 days`} value={String(metrics.customers)} />
+        <DashboardMetric label="Avg. order value" value={formatMoney(metrics.averageOrderCents)} />
         <DashboardMetric
-          accent="teal"
           href="/admin/sms"
           label="SMS sent"
           note={smsNote(overview.sms)}
@@ -208,11 +189,11 @@ function MetricsSkeleton() {
   );
 }
 
-function DashboardMetric({ accent, change: delta, href, label, note, value }: { accent: string; change?: number | null; href?: string; label: string; note?: string; value: string }) {
+function DashboardMetric({ change: delta, href, label, note, value }: { change?: number | null; href?: string; label: string; note?: string; value: string }) {
+  const valueSize = value.length >= 18 ? "tight" : value.length >= 14 ? "compact" : undefined;
   const body = (
     <>
-      <span className="dashboard-metric-icon" aria-hidden="true"></span>
-      <div><span>{label}</span><strong>{value}</strong></div>
+      <div><span>{label}</span><strong className={valueSize}>{value}</strong></div>
       <small className={note ? "muted" : delta !== undefined && delta !== null && delta < 0 ? "down" : "up"}>
         {note ?? (delta === null || delta === undefined ? "Last 7 days" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta).toFixed(1)}% vs previous 7 days`)}
       </small>
@@ -220,8 +201,8 @@ function DashboardMetric({ accent, change: delta, href, label, note, value }: { 
   );
 
   return href
-    ? <Link className={`dashboard-metric ${accent}`} href={href}>{body}</Link>
-    : <article className={`dashboard-metric ${accent}`}>{body}</article>;
+    ? <Link className="dashboard-metric" href={href}>{body}</Link>
+    : <article className="dashboard-metric">{body}</article>;
 }
 
 /**
@@ -261,8 +242,7 @@ function change(current: number, previous: number) {
   return ((current - previous) / previous) * 100;
 }
 
-const getOverview = cache(async () =>
-  apiFetch<DashboardOverview>("/admin/dashboard-overview").catch(() => emptyOverview));
+const getOverview = cache(async () => apiFetch<DashboardOverview>("/admin/dashboard-overview"));
 
 async function getSalesSummary(period: ChartPeriod) {
   return apiFetch<{ period: ChartPeriod; buckets: SalesBucket[] }>(`/admin/sales-summary${toQueryString({ period })}`).catch(() => ({ period, buckets: [] }));
