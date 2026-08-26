@@ -31,8 +31,14 @@ type Campaign = {
   channel: string;
   audience: string;
   recipientCount: number;
+  smsRecipientCount: number;
+  emailRecipientCount: number;
   successCount: number;
+  smsSuccessCount: number;
+  emailSuccessCount: number;
   failureCount: number;
+  smsFailureCount: number;
+  emailFailureCount: number;
   status: string;
   detail: string | null;
   createdAt: string;
@@ -272,7 +278,7 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
       <h2 className="sms-section-title">Campaigns</h2>
       <div className="admin-table">
         <div className="admin-table-row sms-campaign-row heading">
-          <span>Campaign</span><span>Channel</span><span>Recipients</span><span>Sent</span><span>Failed</span><span>Status</span>
+          <span>Campaign</span><span>Channel</span><span>Planned</span><span>Sent</span><span>Failed</span><span>Status</span>
         </div>
         {overview.campaigns.map((campaign) => (
           <div className="admin-table-row sms-campaign-row" key={campaign.id}>
@@ -281,9 +287,9 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
               <small>{new Date(campaign.createdAt).toLocaleString("en-KE", { dateStyle: "medium", timeStyle: "short" })}{campaign.detail ? ` — ${campaign.detail}` : ""}</small>
             </span>
             <span>{campaign.channel.replace("_AND_", " + ").toLowerCase()}</span>
-            <span>{campaign.recipientCount}</span>
-            <strong>{campaign.successCount}</strong>
-            <span>{campaign.failureCount}</span>
+            <span>{campaignCounts(campaign.smsRecipientCount, campaign.emailRecipientCount, campaign.recipientCount)}</span>
+            <strong>{campaignCounts(campaign.smsSuccessCount, campaign.emailSuccessCount, campaign.successCount)}</strong>
+            <span>{campaignCounts(campaign.smsFailureCount, campaign.emailFailureCount, campaign.failureCount)}</span>
             <span className={`sms-pill ${campaign.status.toLowerCase()}`}>{campaign.status.toLowerCase()}</span>
           </div>
         ))}
@@ -311,6 +317,11 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
       </div>
     </>
   );
+}
+
+function campaignCounts(sms: number, email: number, legacyTotal: number) {
+  const counts = [sms ? `SMS ${sms}` : "", email ? `Email ${email}` : ""].filter(Boolean);
+  return counts.join(" · ") || (legacyTotal ? `Total ${legacyTotal}` : "—");
 }
 
 async function getOverview(): Promise<{ overview: MessagingOverview; reachable: boolean }> {

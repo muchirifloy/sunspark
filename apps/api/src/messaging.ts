@@ -13,6 +13,7 @@ import { sendEmail } from "./email.js";
 import { env } from "./env.js";
 import { campaignEmailHtml, plainText, type EmailBrand, type EmailContent } from "./email-template.js";
 import { id } from "./id.js";
+import { campaignDeliveryDestinations, type CampaignChannel } from "./messaging-recipients.js";
 import { sendComposedSms, smsBrand } from "./sms.js";
 import { smsRecipient } from "./sms-templates.js";
 
@@ -150,11 +151,14 @@ const AUDIENCE_CACHE_KEY = "messaging:audience";
 
 async function computeAudienceCounts() {
   const rows = await contactRows(new Set(audienceSources), null);
-  const tally = (contacts: Contact[]) => ({
-    total: contacts.length,
-    withPhone: contacts.filter((contact) => contact.phone).length,
-    withEmail: contacts.filter((contact) => contact.email).length
-  });
+  const tally = (contacts: Contact[]) => {
+    const destinations = campaignDeliveryDestinations(contacts, "SMS_AND_EMAIL");
+    return {
+      total: contacts.length,
+      withPhone: destinations.phones.length,
+      withEmail: destinations.emails.length
+    };
+  };
 
   const counts: Record<string, { total: number; withPhone: number; withEmail: number }> = {};
   for (const source of audienceSources) {
@@ -181,7 +185,7 @@ export async function emailBrand(): Promise<EmailBrand> {
   };
 }
 
-export type CampaignChannel = "SMS" | "EMAIL" | "SMS_AND_EMAIL";
+export type { CampaignChannel };
 
 export type CampaignInput = {
   name: string;
@@ -204,8 +208,14 @@ type CampaignRow = {
   message: string;
   audience: string;
   recipient_count: number;
+  sms_recipient_count: number;
+  email_recipient_count: number;
   success_count: number;
+  sms_success_count: number;
+  email_success_count: number;
   failure_count: number;
+  sms_failure_count: number;
+  email_failure_count: number;
   status: string;
   detail: string | null;
   created_at: Date;
@@ -224,11 +234,7 @@ export async function startCampaign(input: CampaignInput) {
   const manual = manualContacts(input.manual);
   // A pasted list is an explicit instruction and replaces the audience filters entirely.
   const contacts = manual.length ? manual : await resolveAudience({ sources: input.sources, lookbackDays: input.lookbackDays });
-  const wantsSms = input.channel !== "EMAIL";
-  const wantsEmail = input.channel !== "SMS";
-  const phones = wantsSms ? contacts.map((contact) => contact.phone).filter(Boolean) as string[] : [];
-  const emails = wantsEmail ? contacts.map((contact) => contact.email).filter(Boolean) as string[] : [];
-  const recipientCount = wantsSms && wantsEmail ? contacts.length : wantsSms ? phones.length : emails.length;
+  const { phones, emails, recipientCount, smsRecipientCount, emailRecipientCount } = campaignDeliveryDestinations(contacts, input.channel);
 
   if (!recipientCount) {
     return { id: null, recipientCount: 0, smsRecipients: 0, emailRecipients: 0, error: "No contact in this audience has the details this channel needs." };
@@ -238,9 +244,10 @@ export async function startCampaign(input: CampaignInput) {
   const campaignId = id("cmp");
 
   await execute(
-    `INSERT INTO message_campaigns (id, name, channel, subject, message, audience, recipient_count, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'SENDING')`,
-    [campaignId, input.name, input.channel, input.subject || null, input.message, audience, recipientCount]
+    `INSERT INTO message_campaigns
+       (id, name, channel, subject, message, audience, recipient_count, sms_recipient_count, email_recipient_count, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'SENDING')`,
+    [campaignId, input.name, input.channel, input.subject || null, input.message, audience, recipientCount, smsRecipientCount, emailRecipientCount]
   );
 
   void runCampaign(campaignId, input, phones, emails, contacts)
@@ -258,12 +265,18 @@ export async function startCampaign(input: CampaignInput) {
 async function runCampaign(campaignId: string, input: CampaignInput, phones: string[], emails: string[], contacts: Contact[]) {
   let success = 0;
   let failure = 0;
+  let smsSuccess = 0;
+  let smsFailure = 0;
+  let emailSuccess = 0;
+  let emailFailure = 0;
   const notes: string[] = [];
 
   if (phones.length) {
     // MARKETING routes the send through the promotional sender ID. Celcom attaches the
     // opt-out to promotional traffic itself, so nothing is appended here.
     const outcome = await sendComposedSms({ to: phones, body: input.message, purpose: "MARKETING", campaignId });
+    smsSuccess = outcome.sent;
+    smsFailure = outcome.failed;
     success += outcome.sent;
     failure += outcome.failed;
     if (outcome.skipped) notes.push(`SMS skipped: ${outcome.skipped}`);
@@ -291,8 +304,10 @@ async function runCampaign(campaignId: string, input: CampaignInput, phones: str
     for (const to of emails) {
       try {
         await sendEmail({ to, subject, text, html });
+        emailSuccess += 1;
         success += 1;
       } catch (error) {
+        emailFailure += 1;
         failure += 1;
         console.error("Campaign email failed", { campaignId, to, error });
         if (notes.length < 3) notes.push(`${to}: ${error instanceof Error ? error.message : "send failed"}`);
@@ -308,9 +323,21 @@ async function runCampaign(campaignId: string, input: CampaignInput, phones: str
 
   await execute(
     `UPDATE message_campaigns
-     SET status = ?, success_count = ?, failure_count = ?, detail = ?, finished_at = CURRENT_TIMESTAMP
+     SET status = ?, success_count = ?, sms_success_count = ?, email_success_count = ?,
+         failure_count = ?, sms_failure_count = ?, email_failure_count = ?,
+         detail = ?, finished_at = CURRENT_TIMESTAMP
      WHERE id = ?`,
-    [failure && !success ? "FAILED" : failure ? "PARTIAL" : "SENT", success, failure, notes.join(" ").slice(0, 255) || null, campaignId]
+    [
+      failure && !success ? "FAILED" : failure ? "PARTIAL" : "SENT",
+      success,
+      smsSuccess,
+      emailSuccess,
+      failure,
+      smsFailure,
+      emailFailure,
+      notes.join(" ").slice(0, 255) || null,
+      campaignId
+    ]
   );
 
   // A campaign has just spent credit, so the cached figure is known to be wrong. Dropped
@@ -333,8 +360,14 @@ export async function campaignHistory(limit = 30) {
     message: row.message,
     audience: row.audience,
     recipientCount: Number(row.recipient_count ?? 0),
+    smsRecipientCount: Number(row.sms_recipient_count ?? 0),
+    emailRecipientCount: Number(row.email_recipient_count ?? 0),
     successCount: Number(row.success_count ?? 0),
+    smsSuccessCount: Number(row.sms_success_count ?? 0),
+    emailSuccessCount: Number(row.email_success_count ?? 0),
     failureCount: Number(row.failure_count ?? 0),
+    smsFailureCount: Number(row.sms_failure_count ?? 0),
+    emailFailureCount: Number(row.email_failure_count ?? 0),
     status: row.status,
     detail: row.detail,
     createdAt: row.created_at,

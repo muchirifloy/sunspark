@@ -301,11 +301,36 @@ CREATE TABLE IF NOT EXISTS message_campaigns (
   message TEXT NOT NULL,
   audience VARCHAR(191) NOT NULL DEFAULT 'ALL',
   recipient_count INT NOT NULL DEFAULT 0,
+  sms_recipient_count INT NOT NULL DEFAULT 0,
+  email_recipient_count INT NOT NULL DEFAULT 0,
   success_count INT NOT NULL DEFAULT 0,
+  sms_success_count INT NOT NULL DEFAULT 0,
+  email_success_count INT NOT NULL DEFAULT 0,
   failure_count INT NOT NULL DEFAULT 0,
+  sms_failure_count INT NOT NULL DEFAULT 0,
+  email_failure_count INT NOT NULL DEFAULT 0,
   status VARCHAR(16) NOT NULL DEFAULT 'SENDING',
   detail VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   finished_at DATETIME NULL,
   INDEX message_campaigns_created_idx (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS sms_recipient_count INT NOT NULL DEFAULT 0 AFTER recipient_count;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS email_recipient_count INT NOT NULL DEFAULT 0 AFTER sms_recipient_count;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS sms_success_count INT NOT NULL DEFAULT 0 AFTER success_count;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS email_success_count INT NOT NULL DEFAULT 0 AFTER sms_success_count;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS sms_failure_count INT NOT NULL DEFAULT 0 AFTER failure_count;
+ALTER TABLE message_campaigns ADD COLUMN IF NOT EXISTS email_failure_count INT NOT NULL DEFAULT 0 AFTER sms_failure_count;
+
+UPDATE message_campaigns
+SET sms_recipient_count = recipient_count,
+    sms_success_count = success_count,
+    sms_failure_count = failure_count
+WHERE channel = 'SMS' AND recipient_count > 0 AND sms_recipient_count = 0;
+
+UPDATE message_campaigns
+SET email_recipient_count = recipient_count,
+    email_success_count = success_count,
+    email_failure_count = failure_count
+WHERE channel = 'EMAIL' AND recipient_count > 0 AND email_recipient_count = 0;
