@@ -14,6 +14,7 @@ import { id, slugify } from "./id.js";
 import { optimizeUploadedImage } from "./image-optimization.js";
 import { audienceCounts, audienceSources, campaignHistory, startCampaign } from "./messaging.js";
 import { HttpError, asyncRoute, errorHandler } from "./response.js";
+import { driftSummary, reportSchemaDrift, schemaDrift } from "./schema-check.js";
 import {
   queueOrderSms,
   refreshSmsDeliveryReports,
@@ -788,7 +789,11 @@ app.get("/health", (_request, response) => {
   response.json({ ok: true, service: "sunspark-api" });
 });
 
-app.get("/health/config", (_request, response) => {
+app.get("/health/config", asyncRoute(async (_request, response) => {
+  // The schema verdict rides along with the rest of the configuration because that is
+  // where somebody looks when a screen misbehaves after a deploy.
+  const drift = await schemaDrift().catch(() => null);
+
   response.json({
     ok: true,
     service: "sunspark-api",
@@ -798,9 +803,12 @@ app.get("/health/config", (_request, response) => {
       frontendOrigin: allowedOrigins.length > 0,
       mailer: Boolean(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD")),
       sms: Boolean(smsConfiguration())
-    }
+    },
+    schema: drift
+      ? { upToDate: !driftSummary(drift).length, problems: driftSummary(drift) }
+      : { upToDate: null, problems: ["The schema check could not run."] }
   });
-});
+}));
 
 app.get("/settings", asyncRoute(async (_request, response) => {
   const rows = await query("SELECT * FROM site_settings WHERE id = 'default' LIMIT 1");
@@ -2640,4 +2648,7 @@ app.listen(port, () => {
   // that actually loaded, rather than the one someone assumed had. Never credentials.
   console.log(`  database: ${environment.database}`);
   console.log(`  env files: ${environment.loaded.length ? environment.loaded.join(", ") : "none (using real environment variables only)"}`);
+  // Checked after the port is open so a slow or unreachable database delays the warning
+  // rather than the boot itself.
+  void reportSchemaDrift();
 });

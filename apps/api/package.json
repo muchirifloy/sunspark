@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "migrate": "node dist/migrate.js",
+    "schema:verify": "node dist/schema-verify.js",
     "seed": "node dist/seed.js",
     "import:legacy": "node dist/import-legacy.js",
     "import:products": "node dist/import-products.js",

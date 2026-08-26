@@ -13,7 +13,8 @@ NODE_ENV_DIR="${NODE_ENV_DIR:-}"
 RUN_MIGRATE="${RUN_MIGRATE:-1}"
 RUN_SEED="${RUN_SEED:-0}"
 RUN_LEGACY_IMPORT="${RUN_LEGACY_IMPORT:-0}"
-BUILD_ON_HOST="${BUILD_ON_HOST:-0}"
+BUILD_ON_HOST="${BUILD_ON_HOST:-1}"
+VERIFY_SCHEMA="${VERIFY_SCHEMA:-1}"
 API_ROOT="$APP_DIR/apps/api"
 UPLOADS_DIR="$API_ROOT/public/uploads"
 UPLOADS_BACKUP_DIR="${UPLOADS_BACKUP_DIR:-$HOME/sunsparkbackend-storage/uploads}"
@@ -114,9 +115,26 @@ else
   echo "==> Backend dependencies already match package lock"
 fi
 
+if [ "$BUILD_ON_HOST" = "1" ]; then
+  echo "==> Building backend on host"
+  npm run build
+else
+  echo "==> Skipping host build. Using committed apps/api/dist."
+  echo "    (Set BUILD_ON_HOST=1 if apps/api/dist may be behind apps/api/src.)"
+fi
+
 if [ "$RUN_MIGRATE" = "1" ]; then
   echo "==> Applying SQL schema"
   npm run migrate
+fi
+
+# The migration is only believed once the database agrees. A migrate that reported
+# success while a column never landed is exactly how a working deploy still ends in
+# "Unknown column" on the first bulk send, so this stops the deploy before the restart
+# rather than leaving the fault to be found from the admin screens.
+if [ "$VERIFY_SCHEMA" = "1" ]; then
+  echo "==> Verifying database schema matches apps/api/sql/001_init.sql"
+  npm run schema:verify
 fi
 
 if [ "$RUN_SEED" = "1" ]; then
@@ -127,13 +145,6 @@ fi
 if [ "$RUN_LEGACY_IMPORT" = "1" ]; then
   echo "==> Importing existing Prisma-table data into SQL API tables"
   npm run import:legacy
-fi
-
-if [ "$BUILD_ON_HOST" = "1" ]; then
-  echo "==> Building backend on host"
-  npm run build
-else
-  echo "==> Skipping host build. Using committed apps/api/dist."
 fi
 
 echo "==> Restarting cPanel Node app"
