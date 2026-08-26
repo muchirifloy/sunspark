@@ -690,8 +690,16 @@ function productWhere(filters: ProductListFilters) {
   if (filters.status === "low") where.push("p.stock_quantity <= p.low_stock_threshold");
 
   if (filters.category) {
-    where.push("c.slug = ?");
-    values.push(filters.category);
+    // The inventory bulk editor filters by checkbox, so more than one category
+    // slug can arrive at once as a comma separated list.
+    const slugs = filters.category.split(",").map((slug) => slug.trim()).filter(Boolean).slice(0, 50);
+    if (slugs.length > 1) {
+      where.push(`c.slug IN (${slugs.map(() => "?").join(",")})`);
+      values.push(...slugs);
+    } else {
+      where.push("c.slug = ?");
+      values.push(slugs[0] ?? filters.category);
+    }
   }
 
   if (filters.categoryId) {
@@ -1648,6 +1656,87 @@ app.post("/admin/products", asyncRoute(async (request, response) => {
     }
   });
   response.status(201).json({ id: productId });
+}));
+
+/**
+ * Narrow bulk edit for the inventory grid: only the numeric pricing and stock
+ * columns that screen actually shows. Deliberately not the full product PATCH,
+ * so an editor that never loaded a name, slug, description or image list can
+ * never blank them. Declared before /admin/products/:id so Express does not
+ * read "bulk-pricing" as a product id.
+ */
+app.patch("/admin/products/bulk-pricing", asyncRoute(async (request, response) => {
+  const input = z.object({
+    products: z.array(z.object({
+      id: idInput,
+      stockQuantity: z.number().int().min(0).optional(),
+      lowStockThreshold: z.number().int().min(0).optional(),
+      priceCents: z.number().int().min(0).optional(),
+      compareAtCents: z.number().int().min(0).optional().nullable(),
+      costCents: z.number().int().min(0).optional(),
+      options: z.array(z.object({
+        id: idInput,
+        priceCents: z.number().int().min(0),
+        compareAtCents: z.number().int().min(0).optional().nullable(),
+        costCents: z.number().int().min(0).default(0),
+        stockMultiplier: z.number().positive().max(100000).default(1)
+      })).max(12).default([])
+    })).min(1).max(100)
+  }).parse(request.body);
+
+  await transaction(async (connection) => {
+    for (const product of input.products) {
+      const productSets: string[] = [];
+      const productValues: unknown[] = [];
+
+      if (product.stockQuantity !== undefined) {
+        productSets.push("stock_quantity = ?");
+        productValues.push(product.stockQuantity);
+      }
+
+      if (product.lowStockThreshold !== undefined) {
+        productSets.push("low_stock_threshold = ?");
+        productValues.push(product.lowStockThreshold);
+      }
+
+      if (productSets.length) {
+        await connection.query(`UPDATE products SET ${productSets.join(", ")} WHERE id = ?`, [...productValues, product.id]);
+      }
+
+      for (const option of product.options) {
+        await connection.query(
+          `UPDATE product_options
+           SET price_cents = ?, compare_at_cents = ?, cost_cents = ?, stock_multiplier = ?
+           WHERE id = ? AND product_id = ?`,
+          [option.priceCents, option.compareAtCents ?? null, option.costCents, option.stockMultiplier, option.id, product.id]
+        );
+      }
+
+      // The storefront prices off the product row, so it has to follow the
+      // default option exactly the way the full product editor keeps them in step.
+      const defaultRows = await connection.query(
+        `SELECT price_cents, compare_at_cents, cost_cents, selling_unit
+         FROM product_options WHERE product_id = ?
+         ORDER BY is_default DESC, sort_order ASC LIMIT 1`,
+        [product.id]
+      ) as { price_cents: number; compare_at_cents: number | null; cost_cents: number; selling_unit: string }[];
+      const defaultOption = defaultRows[0];
+
+      if (defaultOption) {
+        await connection.query(
+          "UPDATE products SET price_cents = ?, compare_at_cents = ?, cost_cents = ?, selling_unit = ? WHERE id = ?",
+          [defaultOption.price_cents, defaultOption.compare_at_cents, defaultOption.cost_cents, defaultOption.selling_unit, product.id]
+        );
+      } else if (product.priceCents !== undefined) {
+        await connection.query(
+          "UPDATE products SET price_cents = ?, compare_at_cents = ?, cost_cents = ? WHERE id = ?",
+          [product.priceCents, product.compareAtCents ?? null, product.costCents ?? 0, product.id]
+        );
+      }
+    }
+  });
+
+  response.json({ ok: true, updated: input.products.length });
 }));
 
 app.patch("/admin/products/:id", asyncRoute(async (request, response) => {

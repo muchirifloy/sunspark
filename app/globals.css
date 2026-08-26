@@ -2641,6 +2641,15 @@ summary:focus-visible {
   box-shadow: 0 16px 38px rgba(17, 24, 39, 0.16);
 }
 
+/* The table scrolls horizontally, which makes `overflow-y` compute to `auto`
+   as well, so a popout opened on one of the last rows is clipped at the
+   container's bottom edge. Opening one near the end of the table grows the
+   container to fit it. Flipping the menu upward instead only moves the problem:
+   a table four rows tall has no room above the last row either. */
+.admin-table:has(.admin-table-row:nth-last-child(-n+4) .row-action-menu[open]) {
+  padding-bottom: 200px;
+}
+
 .row-action-menu a,
 .row-action-menu button {
   display: block;
@@ -6058,4 +6067,274 @@ a.dashboard-metric:hover { border-color: #c7d3e4; }
 @media (prefers-reduced-motion: reduce) {
   .admin-row-skeleton > span,
   .admin-card-skeleton { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Inventory bulk editor
+   A wide numeric grid: one block per product, one row per selling option, and
+   the product-level stock cells rendered only on that product's first row.
+   --------------------------------------------------------------------------- */
+.bulk-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.bulk-editor-filter {
+  margin: 0;
+}
+
+/* The grid scrolls inside itself rather than with the page, which is what lets
+   the column header stay pinned over 100 products worth of rows. */
+.bulk-editor-table {
+  max-height: clamp(320px, calc(100vh - 330px), 900px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.bulk-category-filter {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.bulk-category-filter > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.bulk-category-filter > summary span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.bulk-category-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+  gap: 6px 14px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.bulk-category-list .check-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bulk-editor-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.bulk-dirty-count {
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: #fff4e5;
+  color: #8a5300;
+  font-weight: 900;
+}
+
+.bulk-dirty-count.clean {
+  background: #eef6ee;
+  color: #2f6b3a;
+}
+
+.bulk-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.6fr) minmax(110px, 0.9fr) 104px 104px 104px 80px 84px 84px;
+  gap: 8px;
+  align-items: center;
+  min-width: 940px;
+  padding: 6px 10px;
+}
+
+.bulk-editor-grid > * {
+  min-width: 0;
+}
+
+.bulk-editor-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* Opaque: rows scroll underneath it. */
+  background: #eaf1f9;
+  color: #42526a;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bulk-product-group {
+  border-bottom: 1px solid var(--line);
+}
+
+.bulk-product-group:nth-of-type(even) {
+  background: #f8fafc;
+}
+
+.bulk-product-group.dirty {
+  background: #fff9ef;
+  box-shadow: inset 3px 0 0 #e0a13a;
+}
+
+.bulk-editor-row:focus-within {
+  background: #edf5ff;
+}
+
+.bulk-product-cell {
+  display: grid;
+  gap: 1px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.bulk-product-cell a {
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-product-cell a:hover { text-decoration: underline; }
+
+.bulk-product-cell small {
+  color: var(--muted);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-option-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #42526a;
+}
+
+.bulk-option-cell em {
+  border-radius: 999px;
+  background: #e7effa;
+  color: #0e52a4;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.bulk-editor-grid input {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bulk-editor-grid input:disabled {
+  background: #f1f4f8;
+  color: var(--muted);
+}
+
+.bulk-editor-grid input.invalid {
+  border-color: #c0392b;
+  background: #fdf1f0;
+}
+
+.bulk-stock-cell {
+  display: block;
+}
+
+.bulk-editor-pagination button {
+  display: inline-flex;
+  min-width: 32px;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.bulk-editor-pagination button.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+
+.bulk-editor-pagination button:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Kept in view so a long page of edits never hides the only way to commit it. */
+.bulk-editor-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 -6px 18px rgba(15, 32, 56, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bulk-editor-savebar > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .bulk-editor-savebar {
+    justify-content: stretch;
+  }
+
+  .bulk-editor-savebar > div {
+    width: 100%;
+  }
+
+  .bulk-editor-savebar > div > button {
+    flex: 1;
+  }
 }

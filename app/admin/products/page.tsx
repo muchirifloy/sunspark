@@ -49,9 +49,14 @@ export default async function AdminProductsPage({
       subtitle="Manage product pricing, stock, status, and images."
       actions={
         canEditProducts ? (
-        <Link className="primary-btn" href="/admin/products/new">
-          Add product
-        </Link>
+        <>
+          <Link className="secondary-btn" href={bulkEditHref(params)}>
+            Bulk edit
+          </Link>
+          <Link className="primary-btn" href="/admin/products/new">
+            Add product
+          </Link>
+        </>
         ) : null
       }
     >
@@ -182,6 +187,15 @@ function ProductsSkeleton() {
       ))}
     </div>
   );
+}
+
+/** Carries the inventory filters straight into the bulk grid. */
+function bulkEditHref(params: { q?: string; category?: string; status?: string } | undefined) {
+  return `/admin/products/bulk${toQueryString({
+    q: params?.q,
+    category: params?.category,
+    status: params?.status
+  })}`;
 }
 
 function productPageHref(
