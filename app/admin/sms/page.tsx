@@ -102,7 +102,7 @@ export default async function BulkSmsPage({
   // Not merely hidden: a staff member typing ?view=bulk lands back on the reports tab,
   // and sendCampaignAction refuses again on the server even if the form is replayed.
   const view = !isOwner && (requested === "bulk" || requested === "email") ? "reports" : requested;
-  const overview = await getOverview();
+  const { overview, reachable } = await getOverview();
   const feedback = params?.error ? params.message ?? "The request could not be completed." : params?.notice ?? null;
 
   return (
@@ -118,7 +118,13 @@ export default async function BulkSmsPage({
       </nav>
 
       {feedback ? <p className={`admin-feedback ${params?.error ? "error" : "success"}`} role="status">{feedback}</p> : null}
-      <ConfigurationNotice configuration={overview.configuration} />
+      {reachable ? <ConfigurationNotice configuration={overview.configuration} /> : (
+        <p className="admin-feedback error" role="status">
+          The backend did not answer, so nothing below could be read. The balance, the log and the
+          settings are blank because they are unknown - not because they are empty or unconfigured.
+          Check that the API service is running and can reach its database, then reload.
+        </p>
+      )}
 
       {view === "reports" ? <Reports channel={params?.channel} overview={overview} /> : null}
       {view === "bulk" ? (
@@ -277,8 +283,16 @@ function Reports({ channel, overview }: { channel?: string; overview: MessagingO
   );
 }
 
-async function getOverview() {
-  return apiFetch<MessagingOverview>("/admin/messaging/overview").catch(() => emptyOverview);
+async function getOverview(): Promise<{ overview: MessagingOverview; reachable: boolean }> {
+  // Reachability is tracked rather than swallowed. Falling back to the empty overview
+  // silently made a backend outage render as "SMS is not configured", sending whoever
+  // was on call to re-enter Celcom credentials that were never the problem - the same
+  // mistake the sign-in page used to make with passwords.
+  try {
+    return { overview: await apiFetch<MessagingOverview>("/admin/messaging/overview"), reachable: true };
+  } catch {
+    return { overview: emptyOverview, reachable: false };
+  }
 }
 
 /**

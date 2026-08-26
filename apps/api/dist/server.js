@@ -8,7 +8,7 @@ import express from "express";
 import { z } from "zod";
 import { execute, query, transaction } from "./db.js";
 import { sendEmail } from "./email.js";
-import { env } from "./env.js";
+import { describeEnvironment, env } from "./env.js";
 import { id } from "./id.js";
 import { optimizeUploadedImage } from "./image-optimization.js";
 import { audienceCounts, audienceSources, campaignHistory, startCampaign } from "./messaging.js";
@@ -2099,5 +2099,10 @@ app.get("/admin/orders/:id", asyncRoute(async (request, response) => {
 app.use(errorHandler);
 const port = Number(env("PORT", "4000"));
 app.listen(port, () => {
+    const environment = describeEnvironment();
     console.log(`Sunspark API listening on ${port}`);
+    // Printed every start so a connection failure can be read against the configuration
+    // that actually loaded, rather than the one someone assumed had. Never credentials.
+    console.log(`  database: ${environment.database}`);
+    console.log(`  env files: ${environment.loaded.length ? environment.loaded.join(", ") : "none (using real environment variables only)"}`);
 });

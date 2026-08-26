@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PendingButton } from "@/components/ui/pending-button";
 import { PasswordField } from "@/components/ui/password-field";
-import { apiFetch, ApiError } from "@/lib/api/client";
+import { apiFetch } from "@/lib/api/client";
+import { loginErrorCode, loginErrorMessage, type LoginErrorCode } from "@/lib/auth/login-feedback";
 import { safeNext } from "@/lib/auth/next-path";
 import { canUseBackOffice } from "@/lib/auth/roles";
 import { setSession } from "@/lib/auth/session";
@@ -22,7 +23,8 @@ async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const requested = String(formData.get("next") ?? "");
-  let user: PublicUser;
+  let user: PublicUser | null = null;
+  let failure: LoginErrorCode | null = null;
 
   try {
     const result = await apiFetch<{ user: PublicUser }>("/auth/login", {
@@ -31,9 +33,17 @@ async function loginAction(formData: FormData) {
     });
     user = result.user;
   } catch (error) {
-    if (!(error instanceof ApiError)) throw error;
+    // A backend that is down or slow no longer masquerades as a wrong password, and an
+    // outage returns to the sign-in page with an honest message rather than the generic
+    // crash screen. Nothing redirects from inside this catch: redirect() signals by
+    // throwing, and catching our own control flow here would report a successful sign-in
+    // as a failed one.
+    failure = loginErrorCode(error);
+  }
+
+  if (!user) {
     const carried = safeNext(requested, "CUSTOMER");
-    redirect(`/login?error=invalid${carried ? `&next=${encodeURIComponent(carried)}` : ""}`);
+    redirect(`/login?error=${failure ?? "unavailable"}${carried ? `&next=${encodeURIComponent(carried)}` : ""}`);
   }
 
   await setSession({ id: user.id, email: user.email, name: user.name, role: user.role });
@@ -70,7 +80,7 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
           <PendingButton pendingText="Signing in...">Sign in</PendingButton>
         </form>
 
-        {params?.error ? <p className="form-error" role="alert">Invalid email or password.</p> : null}
+        {params?.error ? <p className="form-error" role="alert">{loginErrorMessage(params.error)}</p> : null}
         {params?.reset ? <p className="form-success" role="status">Password updated. You can sign in now.</p> : null}
 
         <div className="auth-links">
