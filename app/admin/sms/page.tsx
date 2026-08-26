@@ -3,6 +3,7 @@ import { AdminLayout } from "@/components/admin/admin-layout";
 import { MessageComposer, type AudienceCounts } from "@/components/admin/message-composer";
 import { apiFetch } from "@/lib/api/client";
 import { requireAdmin } from "@/lib/auth/guards";
+import { canManageCatalog } from "@/lib/auth/roles";
 import { refreshDeliveryReportsAction, sendCampaignAction, sendSingleSmsAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -91,9 +92,16 @@ export default async function BulkSmsPage({
 }: {
   searchParams?: Promise<{ view?: string; channel?: string; error?: string; notice?: string; message?: string }>;
 }) {
-  await requireAdmin("/admin/sms");
+  const session = await requireAdmin("/admin/sms");
+  // Bulk sending spends money and speaks for the shop to every contact it holds, so it
+  // is the owner's to do - the same line Campaigns and Store Settings already draw.
+  // Staff keep the delivery log and single replies to a customer about their order.
+  const isOwner = canManageCatalog(session.role);
   const params = await searchParams;
-  const view = (views.includes(params?.view as View) ? params?.view : "reports") as View;
+  const requested = (views.includes(params?.view as View) ? params?.view : "reports") as View;
+  // Not merely hidden: a staff member typing ?view=bulk lands back on the reports tab,
+  // and sendCampaignAction refuses again on the server even if the form is replayed.
+  const view = !isOwner && (requested === "bulk" || requested === "email") ? "reports" : requested;
   const overview = await getOverview();
   const feedback = params?.error ? params.message ?? "The request could not be completed." : params?.notice ?? null;
 
@@ -104,8 +112,8 @@ export default async function BulkSmsPage({
     >
       <nav className="report-tabs" aria-label="Messaging section">
         <Link className={view === "reports" ? "active" : ""} href="/admin/sms">Reports & balance</Link>
-        <Link className={view === "bulk" ? "active" : ""} href="/admin/sms?view=bulk">Send bulk SMS</Link>
-        <Link className={view === "email" ? "active" : ""} href="/admin/sms?view=email">Send bulk email</Link>
+        {isOwner ? <Link className={view === "bulk" ? "active" : ""} href="/admin/sms?view=bulk">Send bulk SMS</Link> : null}
+        {isOwner ? <Link className={view === "email" ? "active" : ""} href="/admin/sms?view=email">Send bulk email</Link> : null}
         <Link className={view === "single" ? "active" : ""} href="/admin/sms?view=single">Single SMS</Link>
       </nav>
 
@@ -140,7 +148,8 @@ export default async function BulkSmsPage({
           action={sendSingleSmsAction}
           audience={overview.audience}
           mode="single"
-          promotionalReady={overview.configuration.promotionalReady}
+          // Staff answer customers; only the owner may pick the promotional sender.
+          promotionalReady={isOwner && overview.configuration.promotionalReady}
           signature={overview.brand.signature}
           smsConfigured={overview.configuration.configured}
           website={overview.brand.website}

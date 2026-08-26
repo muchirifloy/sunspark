@@ -314,6 +314,23 @@ const idInput = z.string().trim().min(2).max(80);
  * text, and a number that cannot receive one is a customer who hears nothing until
  * somebody notices. Stored as typed so the order record still reads naturally.
  */
+/**
+ * A single-line value safe to place in an email header.
+ *
+ * Rejected rather than silently stripped: a subject arriving with a newline in it is
+ * either a mistake worth reporting or an attempt at header injection, and neither
+ * should be quietly rewritten into something the sender did not type. sendEmail strips
+ * them too, as a second line of defence at the point of assembly.
+ */
+const singleLine = (max) => z.string().trim().max(max).refine((value) => !/[\r\n]/.test(value), "Line breaks are not allowed here.");
+/**
+ * A link safe to put behind a button in an email.
+ *
+ * zod's .url() accepts any parseable URL, which includes javascript: and data: - both
+ * of which are script execution in a client that honours them. Only the two schemes a
+ * customer could legitimately be sent to are allowed.
+ */
+const webUrl = z.string().trim().url().refine((value) => /^https?:$/.test(new URL(value).protocol), "Use an http:// or https:// link.");
 const customerPhoneInput = z.string().trim().min(9).max(40)
     .refine((value) => smsRecipient(value) !== null, "Enter a valid Kenyan mobile number, for example 0712345678.");
 /**
@@ -1111,13 +1128,14 @@ app.post("/admin/messaging/sms", asyncRoute(async (request, response) => {
 /** A bulk send. Returns as soon as the campaign is recorded; see runCampaign for why. */
 app.post("/admin/messaging/campaign", asyncRoute(async (request, response) => {
     const input = z.object({
-        name: cleanText(180).min(2),
+        name: singleLine(180).min(2),
         channel: z.enum(["SMS", "EMAIL", "SMS_AND_EMAIL"]),
-        subject: cleanText(200).default(""),
-        heading: cleanText(200).default(""),
+        // Goes into the Subject header, so it is the one field header injection would target.
+        subject: singleLine(200).default(""),
+        heading: singleLine(200).default(""),
         message: cleanText(3000).min(2),
-        buttonLabel: cleanText(40).default(""),
-        buttonUrl: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? "" : value), z.union([z.literal(""), z.string().trim().url()])).default(""),
+        buttonLabel: singleLine(40).default(""),
+        buttonUrl: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? "" : value), z.union([z.literal(""), webUrl])).default(""),
         sources: z.array(z.enum(audienceSources)).default([]),
         lookbackDays: z.number().int().min(0).max(3650).default(0),
         manual: cleanText(20000).default("")

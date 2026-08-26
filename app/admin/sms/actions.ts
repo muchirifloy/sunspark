@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { requireAdmin } from "@/lib/auth/guards";
+import { requireAdmin, requireOwnerAdmin } from "@/lib/auth/guards";
+import { canManageCatalog } from "@/lib/auth/roles";
 
 const basePath = "/admin/sms";
 
@@ -35,10 +36,16 @@ export async function refreshDeliveryReportsAction() {
 }
 
 export async function sendSingleSmsAction(formData: FormData) {
-  await requireAdmin(basePath);
+  const session = await requireAdmin(basePath);
   const to = String(formData.get("to") ?? "").trim();
   const message = String(formData.get("message") ?? "").trim();
-  const purpose = String(formData.get("purpose") ?? "CUSTOMER_SERVICE");
+  // Staff may answer a customer about their order; only the owner may send marketing.
+  // Checked against the session rather than trusted from the form, because the form is
+  // the one part of this a determined operator could edit before submitting.
+  const requestedPurpose = String(formData.get("purpose") ?? "CUSTOMER_SERVICE");
+  const purpose = requestedPurpose === "MARKETING" && !canManageCatalog(session.role)
+    ? "CUSTOMER_SERVICE"
+    : requestedPurpose;
 
   if (!to || !message) failure("single", new ApiError("Enter both a number and a message.", 400));
 
@@ -66,7 +73,7 @@ export async function sendSingleSmsAction(formData: FormData) {
  * the reports tab, where the row updates as it runs.
  */
 export async function sendCampaignAction(formData: FormData) {
-  await requireAdmin(basePath);
+  await requireOwnerAdmin(basePath);
   const channel = String(formData.get("channel") ?? "SMS");
   const view = channel === "EMAIL" ? "email" : "bulk";
 

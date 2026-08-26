@@ -29,12 +29,25 @@ export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
   await sendSmtp({ host, port, user, pass, from: extractEmail(from), to, message });
 }
 
+/**
+ * Strips anything that could end a header line.
+ *
+ * SMTP headers are separated by CRLF, so a newline surviving into a subject or an
+ * address lets the caller append headers of their own - a Bcc to themselves being the
+ * obvious one, which would quietly copy an entire customer mailing to an outsider.
+ * Applied here, at the point the message is assembled, so every caller is covered
+ * whether or not it remembered to validate.
+ */
+function headerValue(value: string) {
+  return String(value ?? "").replace(/[\r\n]+/g, " ").trim();
+}
+
 function buildEmailMessage({ from, to, subject, text, html }: SendEmailInput & { from: string }) {
   const boundary = `sunspark-${Date.now().toString(36)}`;
   return [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
+    `From: ${headerValue(from)}`,
+    `To: ${headerValue(to)}`,
+    `Subject: ${headerValue(subject)}`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     "",
