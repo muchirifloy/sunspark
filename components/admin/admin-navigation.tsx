@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 export type AdminNavItem = {
   group: string;
@@ -12,6 +12,17 @@ export type AdminNavItem = {
   ownerOnly?: boolean;
   showsOrderCount?: boolean;
 };
+
+/**
+ * Shuts the phone menu.
+ *
+ * The menu is a <details>, so on a full page load it reopens closed by itself. Client
+ * navigation does not reload the document, so without this the panel stays open on top
+ * of the page the operator just asked for.
+ */
+function closeMobileMenu() {
+  document.querySelector<HTMLDetailsElement>(".admin-mobile-menu[open]")?.removeAttribute("open");
+}
 
 export function AdminNavigation({
   links,
@@ -24,6 +35,20 @@ export function AdminNavigation({
   const searchParams = useSearchParams();
   const activeHref = getActiveHref(links, pathname, searchParams);
   let currentGroup = "";
+
+  // Covers arriving anywhere the tapped link did not cause directly - the back button,
+  // a redirect after a form action - which a click handler alone would miss.
+  useEffect(closeMobileMenu, [pathname, searchParams]);
+
+  // Escape is what a keyboard user reaches for, and phones with a keyboard attached
+  // otherwise have no way to dismiss the panel without picking something from it.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeMobileMenu();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return links.map((link) => {
     const showGroup = link.group !== currentGroup;
@@ -72,7 +97,14 @@ function AdminNavLink({
   const className = [link.showsOrderCount ? "admin-orders-link" : "", active ? "active" : ""].filter(Boolean).join(" ");
 
   return (
-    <Link aria-current={active ? "page" : undefined} className={className || undefined} href={link.href}>
+    <Link
+      aria-current={active ? "page" : undefined}
+      className={className || undefined}
+      href={link.href}
+      // Closed on the tap rather than on arrival, so the panel does not sit there while
+      // the next page loads - and so re-picking the current page still dismisses it.
+      onClick={closeMobileMenu}
+    >
       <span className="admin-nav-label"><AdminNavIcon name={link.icon} />{link.label}</span>
       {showBadge ? (
         <span className="admin-order-notification" title={`${pendingOrderCount} pending ${pendingOrderCount === 1 ? "order" : "orders"}`}>
@@ -98,6 +130,7 @@ function AdminNavIcon({ name }: { name: string }) {
     stock: <><path d="M4 7h16v13H4zM8 7V4h8v3M8 12h8M8 16h5" /></>,
     campaigns: <><path d="m4 13 12-5v11L4 14zM16 11h2a2 2 0 0 1 0 4h-2M7 15l1 5h4l-2-6" /></>,
     reports: <><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></>,
+    sms: <><path d="M4 5h16v11H9l-5 4z" /><path d="M8 10h.01M12 10h.01M16 10h.01" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19 13.5v-3l-2-.7-.7-1.7.9-1.9-2.1-2.1-1.9.9-1.7-.7L10.5 2h-3l-.7 2.3-1.7.7-1.9-.9-2.1 2.1.9 1.9-.7 1.7-2.3.7v3l2.3.7.7 1.7-.9 1.9 2.1 2.1 1.9-.9 1.7.7.7 2.3h3l.7-2.3 1.7-.7 1.9.9 2.1-2.1-.9-1.9.7-1.7z" /></>,
   };
 

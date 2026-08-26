@@ -8,6 +8,7 @@ Modern Next.js e-commerce site for Sunspark Electrical and Solar.
 - Express + MySQL/MariaDB backend in `apps/api`
 - File uploads for product images
 - Admin dashboard for products, categories, customers, orders, checkout settings
+- Bulk SMS and email through Celcom Africa, with order texts sent automatically
 
 ## Local Setup
 
@@ -45,11 +46,17 @@ Open `http://127.0.0.1:3000`.
 
 ## Admin
 
-Admin login route:
+There is one login for everybody:
 
 ```text
-/admin/login
+/login
 ```
+
+The role on the account decides where it ends: customers land in the storefront,
+ADMIN and STAFF land in the dashboard. The destination is chosen server-side from the
+role the API returns after checking the password, never from the form or the query
+string, and a `next` asking for an admin page is discarded for anyone who is not staff.
+`/admin/login` still forwards there for old bookmarks.
 
 The public storefront does not link to admin. The setup seed creates:
 
@@ -77,6 +84,34 @@ To optimize existing product images in small, safe batches, run this from `apps/
 ```bash
 npm run images:optimize-existing -- --limit=20
 ```
+
+## Bulk SMS
+
+Transactional texts go out automatically, with no admin action:
+
+```text
+Order placed (site or WhatsApp)  ->  "we have received your order"
+Order moved to PROCESSING        ->  "your order is being processed"
+Order moved to COMPLETED         ->  "your order is complete"
+Walk-in sale completed           ->  "payment received, keep this as your receipt"
+```
+
+Every message ends with the shop phone number and website. A phone number is required
+at checkout for this reason; it stays optional on a walk-in sale, where the text is
+simply skipped if nobody left a number.
+
+`/admin/sms` carries the credit balance, recharge details, the delivery log, and the
+three send forms: bulk SMS, bulk email, and a single SMS. Bulk sends run in the
+background and report progress in the campaign list, because a few hundred emails take
+far longer than one request.
+
+Celcom issues two sender IDs on one API key: one for transactional traffic and one for
+promotional. The system picks between them from the kind of message being sent, and each
+reads its own variable and only its own - there is no fallback between them and no
+shared catch-all. With `CELCOM_SMS_SENDER_ID_PROMOTIONAL` unset, bulk and promotional
+sends are refused rather than rerouted, while order texts carry on unaffected. Credentials live in
+`apps/api/.env` only - see `apps/api/.env.example`. With none set, SMS is inert and
+everything else keeps working.
 
 ## Split Deployment
 
@@ -116,6 +151,17 @@ REPORT_EMAIL
 SUPPORT_EMAIL
 WHATSAPP_PHONE
 ```
+
+Optional, for bulk SMS:
+
+```text
+CELCOM_SMS_API_KEY
+CELCOM_SMS_PARTNER_ID
+CELCOM_SMS_SENDER_ID_TRANSACTIONAL
+CELCOM_SMS_SENDER_ID_PROMOTIONAL
+```
+
+Leaving either sender ID empty disables that kind of traffic and nothing else.
 
 ## Verification
 

@@ -23,8 +23,10 @@ test.describe("Sunspark storefront", () => {
     await page.goto("/checkout");
     await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
 
+    // /admin/login forwards to the one login shared with customers.
     await page.goto("/admin/login");
-    await expect(page.getByRole("heading", { name: "Admin Login" })).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await expect(page.getByText("Password")).toHaveCount(1);
     await expect(page.getByText("Initial setup")).toHaveCount(0);
   });

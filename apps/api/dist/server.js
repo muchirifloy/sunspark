@@ -11,7 +11,10 @@ import { sendEmail } from "./email.js";
 import { env } from "./env.js";
 import { id } from "./id.js";
 import { optimizeUploadedImage } from "./image-optimization.js";
+import { audienceCounts, audienceSources, campaignHistory, startCampaign } from "./messaging.js";
 import { HttpError, asyncRoute, errorHandler } from "./response.js";
+import { queueOrderSms, refreshSmsDeliveryReports, sendComposedSms, smsBalance, smsConfiguration, smsBrand, smsConfigurationSummary, smsDashboardSummary, smsReport, smsTopUpUrl } from "./sms.js";
+import { smsRecipient, smsSignature } from "./sms-templates.js";
 const app = express();
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const uploadRoot = path.join(appRoot, "public", "uploads");
@@ -305,6 +308,15 @@ const optionalEmail = z.preprocess((value) => (typeof value === "string" && valu
 const slugInput = z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a clean URL slug.");
 const idInput = z.string().trim().min(2).max(80);
 /**
+ * A reachable Kenyan mobile number.
+ *
+ * Required at checkout rather than optional: every order now triggers a confirmation
+ * text, and a number that cannot receive one is a customer who hears nothing until
+ * somebody notices. Stored as typed so the order record still reads naturally.
+ */
+const customerPhoneInput = z.string().trim().min(9).max(40)
+    .refine((value) => smsRecipient(value) !== null, "Enter a valid Kenyan mobile number, for example 0712345678.");
+/**
  * A negotiated unit price, in cents.
  *
  * Only ever accepted on admin-token routes. The public checkout endpoint must
@@ -536,7 +548,8 @@ app.get("/health/config", (_request, response) => {
             database: Boolean(env("DATABASE_URL")),
             adminApiToken: Boolean(adminApiToken),
             frontendOrigin: allowedOrigins.length > 0,
-            mailer: Boolean(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD"))
+            mailer: Boolean(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD")),
+            sms: Boolean(smsConfiguration())
         }
     });
 });
@@ -820,7 +833,7 @@ app.get("/admin/sales-summary", asyncRoute(async (request, response) => {
     response.json({ period, buckets });
 }));
 app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
-    const [salesRows, customerRows, categoryRows, productRows, recentOrders, inventoryRows] = await Promise.all([
+    const [salesRows, customerRows, categoryRows, productRows, recentOrders, inventoryRows, sms] = await Promise.all([
         query(`SELECT
          COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents ELSE 0 END), 0) AS currentSalesCents,
          COALESCE(SUM(CASE WHEN o.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) AND o.created_at < DATE_SUB(NOW(), INTERVAL 7 DAY) THEN oi.total_cents ELSE 0 END), 0) AS previousSalesCents,
@@ -867,7 +880,8 @@ app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
          COUNT(CASE WHEN stock_quantity > 0 AND stock_quantity <= low_stock_threshold THEN 1 END) AS low,
          COUNT(CASE WHEN stock_quantity <= 0 THEN 1 END) AS outOfStock
        FROM products
-       WHERE is_active = TRUE`)
+       WHERE is_active = TRUE`),
+        smsDashboardSummary()
     ]);
     const sales = salesRows[0];
     const customers = customerRows[0];
@@ -894,7 +908,8 @@ app.get("/admin/dashboard-overview", asyncRoute(async (_request, response) => {
             healthy: Number(inventory?.healthy ?? 0),
             low: Number(inventory?.low ?? 0),
             outOfStock: Number(inventory?.outOfStock ?? 0)
-        }
+        },
+        sms
     });
 }));
 app.get("/campaigns", asyncRoute(async (_request, response) => {
@@ -1026,6 +1041,106 @@ app.post("/admin/reports/daily-email", asyncRoute(async (request, response) => {
     `
     });
     response.json({ ok: true, to });
+}));
+/**
+ * Everything the bulk SMS tab renders, in one read.
+ *
+ * The credit balance is fetched here rather than on the dashboard: it costs a round trip
+ * to Celcom, and paying for that on every admin page view to show a number nobody asked
+ * for would be a poor trade. Visiting this tab is the intentional ask.
+ */
+app.get("/admin/messaging/overview", asyncRoute(async (request, response) => {
+    const limit = Number(request.query.limit ?? 200);
+    const [report, campaigns, audience, balance, brand] = await Promise.all([
+        smsReport(Number.isFinite(limit) ? limit : 200),
+        campaignHistory(),
+        audienceCounts(),
+        smsBalance(),
+        smsBrand()
+    ]);
+    response.json({
+        configuration: smsConfigurationSummary(),
+        // The composer counts segments as you type, so it needs the exact tail the server
+        // will append - a preview that undercounts by a signature is worse than none.
+        brand: { ...brand, signature: smsSignature(brand) },
+        balance,
+        topUp: {
+            url: smsTopUpUrl(),
+            paybill: env("CELCOM_SMS_PAYBILL", "2007272"),
+            account: env("CELCOM_SMS_PAYBILL_ACCOUNT", "SUNSPARK")
+        },
+        audience,
+        campaigns,
+        ...report
+    });
+}));
+/**
+ * Pulls fresh delivery reports on demand.
+ *
+ * Deliberately a button an administrator presses rather than something the page does on
+ * load: each pending message is a separate call to Celcom, so refreshing is a decision,
+ * not a side effect of looking.
+ */
+app.post("/admin/messaging/refresh-reports", asyncRoute(async (_request, response) => {
+    response.json(await refreshSmsDeliveryReports());
+}));
+/** One message to one number, sent while the operator waits so they see the result. */
+app.post("/admin/messaging/sms", asyncRoute(async (request, response) => {
+    const input = z.object({
+        to: cleanText(40).min(9),
+        message: cleanText(900).min(2),
+        // A reply about somebody's order is transactional; anything advertising is not, and
+        // must go out under the promotional sender ID.
+        purpose: z.enum(["CUSTOMER_SERVICE", "MARKETING"]).default("CUSTOMER_SERVICE")
+    }).parse(request.body);
+    if (!smsRecipient(input.to))
+        throw new HttpError(400, "Enter a valid Kenyan mobile number, for example 0712345678.");
+    const configuration = smsConfiguration();
+    if (!configuration)
+        throw new HttpError(400, "SMS is not configured. Add the Celcom credentials to the API environment.");
+    if (input.purpose === "MARKETING" && !configuration.promotionalSenderId) {
+        throw new HttpError(400, "A promotional sender ID is required before a promotional message can be sent. Set CELCOM_SMS_SENDER_ID_PROMOTIONAL in the API environment.");
+    }
+    const outcome = await sendComposedSms({ to: [input.to], body: input.message, purpose: input.purpose });
+    if (outcome.skipped)
+        throw new HttpError(400, outcome.skipped);
+    if (!outcome.sent)
+        throw new HttpError(502, outcome.results[0]?.detail ?? "The message could not be sent.");
+    response.json({ ok: true, segments: outcome.segments, message: outcome.message, detail: outcome.results[0]?.detail ?? null });
+}));
+/** A bulk send. Returns as soon as the campaign is recorded; see runCampaign for why. */
+app.post("/admin/messaging/campaign", asyncRoute(async (request, response) => {
+    const input = z.object({
+        name: cleanText(180).min(2),
+        channel: z.enum(["SMS", "EMAIL", "SMS_AND_EMAIL"]),
+        subject: cleanText(200).default(""),
+        heading: cleanText(200).default(""),
+        message: cleanText(3000).min(2),
+        buttonLabel: cleanText(40).default(""),
+        buttonUrl: z.preprocess((value) => (typeof value === "string" && value.trim() === "" ? "" : value), z.union([z.literal(""), z.string().trim().url()])).default(""),
+        sources: z.array(z.enum(audienceSources)).default([]),
+        lookbackDays: z.number().int().min(0).max(3650).default(0),
+        manual: cleanText(20000).default("")
+    }).parse(request.body);
+    if (input.channel !== "EMAIL") {
+        const configuration = smsConfiguration();
+        if (!configuration)
+            throw new HttpError(400, "SMS is not configured. Add the Celcom credentials to the API environment.");
+        // Refused here rather than per message, so a blocked campaign leaves no half-sent
+        // record behind. Every bulk send is marketing by definition.
+        if (!configuration.promotionalSenderId) {
+            throw new HttpError(400, "A promotional sender ID is required before any bulk SMS can go out. Set CELCOM_SMS_SENDER_ID_PROMOTIONAL in the API environment - campaigns are never sent under the transactional shortcode.");
+        }
+    }
+    if (input.channel !== "SMS" && !(env("SMTP_HOST") && env("SMTP_USER") && env("SMTP_PASSWORD"))) {
+        throw new HttpError(400, "Outbound mail is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in the API environment.");
+    }
+    if (input.buttonLabel && !input.buttonUrl)
+        throw new HttpError(400, "Give the button a link, or remove its label.");
+    const started = await startCampaign(input);
+    if (started.error)
+        throw new HttpError(400, started.error);
+    response.status(202).json(started);
 }));
 app.patch("/admin/categories/:id/hide", asyncRoute(async (request, response) => {
     await execute("UPDATE categories SET is_active = FALSE WHERE id = ?", [request.params.id]);
@@ -1260,12 +1375,32 @@ app.delete("/admin/campaigns/:id", asyncRoute(async (request, response) => {
         throw new HttpError(404, "Campaign not found.");
     response.status(204).send();
 }));
+// Which status changes are worth a text. Confirming and readying an order are internal
+// steps the customer has no action to take on, so texting them would spend credit to say
+// nothing; being processed and being complete are the two the customer is waiting for.
+const statusSmsPurpose = {
+    PROCESSING: "ORDER_PROCESSING",
+    COMPLETED: "ORDER_COMPLETED"
+};
 app.patch("/admin/orders/:id", asyncRoute(async (request, response) => {
     const input = z.object({
         status: z.enum(["PENDING", "CONFIRMED", "PROCESSING", "READY", "COMPLETED", "CANCELLED"]),
         paymentStatus: z.enum(["UNPAID", "PENDING", "PAID", "FAILED", "REFUNDED"])
     }).parse(request.body);
+    // Read first: re-saving an order that is already COMPLETED must not text the customer
+    // a second time, and the admin form submits the current status on every save.
+    const [existing] = await query("SELECT status, order_number, customer_name, customer_phone, total_cents FROM orders WHERE id = ? LIMIT 1", [request.params.id]);
     await execute("UPDATE orders SET status = ?, payment_status = ? WHERE id = ?", [input.status, input.paymentStatus, request.params.id]);
+    const purpose = statusSmsPurpose[input.status];
+    if (existing && purpose && existing.status !== input.status) {
+        queueOrderSms(purpose, {
+            phone: existing.customer_phone,
+            orderId: String(request.params.id),
+            orderNumber: existing.order_number,
+            customerName: existing.customer_name,
+            totalCents: Number(existing.total_cents ?? 0)
+        });
+    }
     response.json({ ok: true });
 }));
 function documentReference(kind) {
@@ -1644,8 +1779,8 @@ app.post("/admin/walk-in-sales", asyncRoute(async (request, response) => {
             return { product, option, sellingUnit, unitCents, listPriceCents, costCents, stockDeducted, quantity: item.quantity, total };
         });
         await connection.query(`INSERT INTO orders
-       (id, order_number, customer_name, customer_email, customer_phone, payment_method, payment_status, status, subtotal_cents, total_cents)
-       VALUES (?, ?, ?, ?, ?, ?, 'PAID', 'COMPLETED', ?, ?)`, [
+       (id, order_number, customer_name, customer_email, customer_phone, payment_method, payment_status, status, source, subtotal_cents, total_cents)
+       VALUES (?, ?, ?, ?, ?, ?, 'PAID', 'COMPLETED', 'WALK_IN', ?, ?)`, [
             orderId,
             orderNumber,
             input.customerName,
@@ -1668,6 +1803,16 @@ app.post("/admin/walk-in-sales", asyncRoute(async (request, response) => {
         await connection.query("INSERT INTO invoices (id, order_id, invoice_number) VALUES (?, ?, ?)", [id("inv"), orderId, `INV-${orderNumber}`]);
         return { id: orderId, orderNumber, totalCents: subtotal };
     });
+    // The goods are already paid for and handed over, so this confirms the sale rather
+    // than promising anything further. Queued, never awaited: the cashier must not wait
+    // on a gateway to finish serving the person at the counter.
+    queueOrderSms("WALK_IN_SALE", {
+        phone: input.customerPhone,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerName: input.customerName,
+        totalCents: order.totalCents
+    });
     response.status(201).json(order);
 }));
 app.post("/orders/checkout", asyncRoute(async (request, response) => {
@@ -1675,7 +1820,7 @@ app.post("/orders/checkout", asyncRoute(async (request, response) => {
         userId: idInput.optional().nullable(),
         customerName: cleanText(140).min(2),
         customerEmail: z.string().email(),
-        customerPhone: optionalText(40),
+        customerPhone: customerPhoneInput,
         deliveryNote: optionalText(900),
         deliveryLocation: optionalText(240),
         deliveryMapUrl: optionalUrl,
@@ -1773,6 +1918,15 @@ app.post("/orders/checkout", asyncRoute(async (request, response) => {
             })),
             invoice: { invoiceNumber }
         };
+    });
+    // Covers both routes to an order: a card/M-Pesa checkout and a WhatsApp order, which
+    // is the same record with paymentMethod WHATSAPP before it hands off to the chat.
+    queueOrderSms("ORDER_RECEIVED", {
+        phone: order.customerPhone,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        totalCents: order.totalCents
     });
     response.status(201).json(order);
 }));

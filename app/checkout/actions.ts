@@ -12,10 +12,17 @@ export async function checkoutAction(formData: FormData): Promise<ActionResult> 
   try {
     await preventAdminShopping();
     const paymentMethod = String(formData.get("paymentMethod") ?? "WHATSAPP") as PaymentMethod;
+    const customerPhone = String(formData.get("customerPhone") ?? "").trim();
+    // Checked here as well as in the browser and the API: every order now triggers a
+    // confirmation text, and a number that cannot receive one is a customer who hears
+    // nothing until somebody notices the order by hand.
+    if (!/^(?:\+?254|0)?[17]\d{8}$/.test(customerPhone.replace(/[\s-]/g, ""))) {
+      return { ok: false, message: "Enter a valid Kenyan mobile number, for example 0712345678. We text your order updates to it." };
+    }
     const order = await createOrderFromCart({
       customerName: String(formData.get("customerName") ?? "").trim(),
       customerEmail: String(formData.get("customerEmail") ?? "").trim(),
-      customerPhone: String(formData.get("customerPhone") ?? "").trim(),
+      customerPhone,
       deliveryNote: String(formData.get("deliveryNote") ?? "").trim(),
       deliveryLocation: String(formData.get("deliveryLocation") ?? "").trim(),
       deliveryMapUrl: String(formData.get("deliveryMapUrl") ?? "").trim(),

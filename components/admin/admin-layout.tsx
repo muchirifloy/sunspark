@@ -26,6 +26,7 @@ const adminLinks: AdminNavItem[] = [
   { href: "/admin/products/new", label: "Add Product", group: "Catalogue", icon: "add", ownerOnly: true },
   { href: "/admin/products?status=low", label: "Low Stock", group: "Inventory", icon: "stock" },
   { href: "/admin/campaigns", label: "Campaigns", group: "Marketing", icon: "campaigns", ownerOnly: true },
+  { href: "/admin/sms", label: "Bulk SMS", group: "Marketing", icon: "sms" },
   { href: "/admin/reports", label: "Sales Reports", group: "Reports", icon: "reports" },
   { href: "/admin/reports?view=stock", label: "Stock Reports", group: "Reports", icon: "stock" },
   { href: "/admin/reports?view=customers", label: "Customer Reports", group: "Reports", icon: "customers" },

@@ -255,3 +255,57 @@ ALTER TABLE product_options ADD COLUMN IF NOT EXISTS stock_multiplier DECIMAL(10
 -- them, so one here would be executed as a statement of its own.
 ALTER TABLE order_items ADD COLUMN IF NOT EXISTS list_price_cents INT NULL AFTER unit_cents;
 ALTER TABLE draft_document_items ADD COLUMN IF NOT EXISTS list_price_cents INT NULL AFTER unit_cents;
+
+-- Where an order came from. Counter sales used to be told apart from web orders only by
+-- the synthetic walkin-...@ address they are recorded under, which is a marker that
+-- breaks the moment a cashier types the customer's real email. Recording the origin
+-- explicitly keeps the split exact, which the bulk-messaging audience filters rely on.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'ONLINE' AFTER payment_status;
+UPDATE orders SET source = 'WALK_IN' WHERE source = 'ONLINE' AND customer_email LIKE 'walkin-%';
+
+-- Every SMS the system has handed to Celcom, with what Celcom said about it.
+-- `segments` is the billable unit: a message over 160 GSM-7 characters is charged more
+-- than once, so credit spend is summed from this rather than from a row count.
+CREATE TABLE IF NOT EXISTS sms_messages (
+  id VARCHAR(64) PRIMARY KEY,
+  recipient VARCHAR(20) NOT NULL,
+  purpose VARCHAR(40) NOT NULL,
+  sender_id VARCHAR(30) NOT NULL,
+  channel VARCHAR(16) NOT NULL DEFAULT 'TRANSACTIONAL',
+  message TEXT NOT NULL,
+  segments INT NOT NULL DEFAULT 1,
+  provider_message_id VARCHAR(64) NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  response_code VARCHAR(10) NULL,
+  detail VARCHAR(255) NULL,
+  order_id VARCHAR(64) NULL,
+  campaign_id VARCHAR(64) NULL,
+  delivered_at DATETIME NULL,
+  last_checked_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX sms_messages_created_idx (created_at),
+  INDEX sms_messages_status_created_idx (status, created_at),
+  INDEX sms_messages_provider_idx (provider_message_id),
+  INDEX sms_messages_campaign_idx (campaign_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- One row per bulk send. Written before the send starts and updated as it runs, so a
+-- campaign that is still going is visible in the admin rather than only appearing once
+-- the last message has left.
+CREATE TABLE IF NOT EXISTS message_campaigns (
+  id VARCHAR(64) PRIMARY KEY,
+  name VARCHAR(191) NOT NULL,
+  channel VARCHAR(20) NOT NULL DEFAULT 'SMS',
+  subject VARCHAR(220) NULL,
+  message TEXT NOT NULL,
+  audience VARCHAR(191) NOT NULL DEFAULT 'ALL',
+  recipient_count INT NOT NULL DEFAULT 0,
+  success_count INT NOT NULL DEFAULT 0,
+  failure_count INT NOT NULL DEFAULT 0,
+  status VARCHAR(16) NOT NULL DEFAULT 'SENDING',
+  detail VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at DATETIME NULL,
+  INDEX message_campaigns_created_idx (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

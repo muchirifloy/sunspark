@@ -26,7 +26,7 @@ export default function AdminError({
           <Link className="secondary-btn" href="/admin">
             Back to dashboard
           </Link>
-          <Link className="secondary-btn" href="/admin/login">
+          <Link className="secondary-btn" href="/login">
             Admin login
           </Link>
         </div>

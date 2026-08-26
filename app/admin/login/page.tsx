@@ -1,65 +1,24 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { PendingButton } from "@/components/ui/pending-button";
-import { PasswordField } from "@/components/ui/password-field";
-import { apiFetch, ApiError } from "@/lib/api/client";
-import { setSession } from "@/lib/auth/session";
-import type { PublicUser } from "@/lib/types";
+import { isAdminPath } from "@/lib/auth/next-path";
 
-async function adminLoginAction(formData: FormData) {
-  "use server";
-
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const next = safeAdminPath(String(formData.get("next") ?? ""));
-  let user: PublicUser;
-
-  try {
-    const result = await apiFetch<{ user: PublicUser }>("/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ email, password })
-    });
-    user = result.user;
-  } catch (error) {
-    if (!(error instanceof ApiError)) throw error;
-    redirect(`/admin/login?error=invalid${next ? `&next=${encodeURIComponent(next)}` : ""}`);
-  }
-
-  if (user.role !== "ADMIN" && user.role !== "STAFF") {
-    redirect(`/admin/login?error=invalid${next ? `&next=${encodeURIComponent(next)}` : ""}`);
-  }
-
-  await setSession({ id: user.id, email: user.email, name: user.name, role: user.role });
-  redirect(next || "/admin");
-}
-
+/**
+ * The old separate admin sign-in, kept only as a forward to the single login.
+ *
+ * There is one login for everybody now: the role on the account decides whether it ends
+ * in the storefront or the dashboard. This route survives because it is bookmarked, it
+ * is in the README, and proxy.ts still names it - a 404 here would look like an outage
+ * to whoever typed it.
+ */
 export default async function AdminLoginPage({ searchParams }: { searchParams?: Promise<{ error?: string; next?: string; reset?: string }> }) {
   const params = await searchParams;
-  const next = safeAdminPath(params?.next ?? "");
-  return (
-    <section className="section auth-section">
-      <div className="auth-card">
-        <h1>Admin Login</h1>
-        <p>Sign in to manage products, orders, stock, invoices, and checkout settings.</p>
-        <form action={adminLoginAction} className="stack-form">
-          {next ? <input name="next" type="hidden" value={next} /> : null}
-          <label>
-            Email
-            <input name="email" type="email" required />
-          </label>
-          <PasswordField autoComplete="current-password" />
-          <PendingButton pendingText="Signing in...">Sign in</PendingButton>
-        </form>
-        {params?.error ? <p className="form-error" role="alert">Invalid admin credentials.</p> : null}
-        {params?.reset ? <p className="form-success" role="status">Password updated. You can sign in now.</p> : null}
-        <div className="auth-links">
-          <Link href="/forgot-password">Forgot password?</Link>
-        </div>
-      </div>
-    </section>
-  );
-}
+  // Only an admin path is carried across, and only after the same normalising the login
+  // itself applies - this must not become an open redirect just because it is a forward.
+  const requested = String(params?.next ?? "").split(String.fromCharCode(92)).join("/");
+  const next = isAdminPath(requested) && !requested.startsWith("//") ? requested : "/admin";
 
-function safeAdminPath(value: string) {
-  return value.startsWith("/admin") && !value.startsWith("//") ? value : "";
+  const query = new URLSearchParams({ next });
+  if (params?.error) query.set("error", params.error);
+  if (params?.reset) query.set("reset", params.reset);
+
+  redirect(`/login?${query.toString()}`);
 }

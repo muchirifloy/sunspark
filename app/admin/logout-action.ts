@@ -5,5 +5,5 @@ import { clearSession } from "@/lib/auth/session";
 
 export async function adminLogoutAction() {
   await clearSession();
-  redirect("/admin/login");
+  redirect("/login");
 }

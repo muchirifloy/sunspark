@@ -20,7 +20,7 @@ async function resetPasswordAction(formData: FormData) {
       body: JSON.stringify({ token, password })
     });
     if (result.role === "ADMIN" || result.role === "STAFF") {
-      redirect("/admin/login?reset=1");
+      redirect("/login?reset=1");
     }
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;

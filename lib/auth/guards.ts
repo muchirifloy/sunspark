@@ -32,7 +32,7 @@ export async function requireAdmin(nextPath = "/admin") {
   const session = await getSession();
 
   if (!session || !canUseBackOffice(session.role)) {
-    redirect(`/admin/login?next=${encodeURIComponent(nextPath)}`);
+    redirect(`/login?next=${encodeURIComponent(nextPath)}`);
   }
 
   return session;

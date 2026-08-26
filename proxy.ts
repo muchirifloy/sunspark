@@ -13,10 +13,6 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
 
-  if (session?.role === "ADMIN" && pathname === "/admin/login") {
-    return NextResponse.redirect(new URL("/admin", request.url));
-  }
-
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(pathnameHeader, pathname);
 

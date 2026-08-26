@@ -25,6 +25,16 @@ type DashboardOverview = {
   topProducts: { productId: string | null; name: string; salesCents: number; units: number }[];
   recentOrders: { id: string; orderNumber: string; customerName: string; totalCents: number; status: string; createdAt: string }[];
   inventory: { total: number; healthy: number; low: number; outOfStock: number };
+  sms: {
+    configured: boolean;
+    promotionalReady: boolean;
+    dryRun: boolean;
+    messages7Days: number;
+    segments7Days: number;
+    messages30Days: number;
+    segments30Days: number;
+    failed30Days: number;
+  };
 };
 
 const emptyOverview: DashboardOverview = {
@@ -42,7 +52,8 @@ const emptyOverview: DashboardOverview = {
   categories: [],
   topProducts: [],
   recentOrders: [],
-  inventory: { total: 0, healthy: 0, low: 0, outOfStock: 0 }
+  inventory: { total: 0, healthy: 0, low: 0, outOfStock: 0 },
+  sms: { configured: false, promotionalReady: false, dryRun: false, messages7Days: 0, segments7Days: 0, messages30Days: 0, segments30Days: 0, failed30Days: 0 }
 };
 
 export default async function AdminDashboardPage({
@@ -89,6 +100,13 @@ async function AdminDashboard({
         <DashboardMetric accent="orange" change={change(metrics.profitCents, metrics.previousProfitCents)} label="Gross profit" value={formatMoney(metrics.profitCents)} />
         <DashboardMetric accent="blue" change={change(metrics.customers, metrics.previousCustomers)} label="New customers" value={String(metrics.customers)} />
         <DashboardMetric accent="navy" label="Avg. order value" value={formatMoney(metrics.averageOrderCents)} />
+        <DashboardMetric
+          accent="teal"
+          href="/admin/sms"
+          label="SMS sent"
+          note={smsNote(overview.sms)}
+          value={String(overview.sms.messages7Days)}
+        />
       </section>
 
       <div className="dashboard-grid dashboard-grid-primary">
@@ -136,16 +154,33 @@ async function AdminDashboard({
   );
 }
 
-function DashboardMetric({ accent, change: delta, label, value }: { accent: string; change?: number | null; label: string; value: string }) {
-  return (
-    <article className={`dashboard-metric ${accent}`}>
+function DashboardMetric({ accent, change: delta, href, label, note, value }: { accent: string; change?: number | null; href?: string; label: string; note?: string; value: string }) {
+  const body = (
+    <>
       <span className="dashboard-metric-icon" aria-hidden="true"></span>
       <div><span>{label}</span><strong>{value}</strong></div>
-      <small className={delta !== undefined && delta !== null && delta < 0 ? "down" : "up"}>
-        {delta === null || delta === undefined ? "Last 7 days" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta).toFixed(1)}% vs previous 7 days`}
+      <small className={note ? "muted" : delta !== undefined && delta !== null && delta < 0 ? "down" : "up"}>
+        {note ?? (delta === null || delta === undefined ? "Last 7 days" : `${delta >= 0 ? "↑" : "↓"} ${Math.abs(delta).toFixed(1)}% vs previous 7 days`)}
       </small>
-    </article>
+    </>
   );
+
+  return href
+    ? <Link className={`dashboard-metric ${accent}`} href={href}>{body}</Link>
+    : <article className={`dashboard-metric ${accent}`}>{body}</article>;
+}
+
+/**
+ * The one thing worth saying about SMS in a single line.
+ *
+ * A failure is what an owner needs to act on, so it wins over the volume; an unconfigured
+ * or paused gateway wins over both, because then nothing is going out at all.
+ */
+function smsNote(sms: DashboardOverview["sms"]) {
+  if (!sms.configured) return "Not configured";
+  if (sms.dryRun) return "Dry run - nothing is sent";
+  if (sms.failed30Days) return `${sms.failed30Days} failed in 30 days`;
+  return `${sms.segments30Days} credits in 30 days`;
 }
 
 function DashboardCardHeader({ children, eyebrow, title }: { children?: ReactNode; eyebrow?: string; title: string }) {

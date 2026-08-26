@@ -645,22 +645,100 @@ summary {
 }
 
 .auth-section {
-  min-height: 60vh;
+  min-height: 72vh;
   display: grid;
   place-items: center;
+  /* A tinted ground so the card reads as a panel resting on the page rather than a
+     bordered box drawn on flat white. */
+  background:
+    radial-gradient(90rem 42rem at 12% -12%, rgba(14, 82, 164, 0.09), transparent 60%),
+    radial-gradient(70rem 38rem at 108% 112%, rgba(243, 111, 33, 0.10), transparent 62%),
+    #fbfcfe;
+  padding-block: clamp(28px, 7vw, 68px);
 }
 
 .auth-card {
-  width: min(100%, 460px);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  width: min(100%, 432px);
+  border: 1px solid #e7ecf4;
+  border-radius: 16px;
   background: #fff;
-  padding: 24px;
+  padding: clamp(26px, 5vw, 36px);
+  box-shadow: 0 1px 2px rgba(17, 32, 51, 0.05), 0 22px 48px -18px rgba(17, 32, 51, 0.22);
+}
+
+.auth-brand {
+  display: inline-flex;
+  gap: 9px;
+  align-items: center;
+  margin-bottom: 20px;
+  color: var(--brand);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.auth-brand svg {
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  border-radius: 9px;
+  background: linear-gradient(140deg, #0e52a4, #2f7fd4);
+  color: #fff;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
 }
 
 .auth-card h1 {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
+  font-size: clamp(23px, 3.4vw, 27px);
+  letter-spacing: -0.02em;
 }
+
+.auth-card > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.auth-card .stack-form label {
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+
+.auth-card .stack-form input {
+  background: #fcfdfe;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.auth-card .stack-form input:focus-visible,
+.auth-card .password-field:focus-within {
+  border-color: var(--brand);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(14, 82, 164, 0.14);
+  outline: none;
+}
+
+.auth-card .stack-form button[type="submit"] {
+  min-height: 46px;
+  margin-top: 2px;
+  border-radius: 9px;
+  font-size: 14.5px;
+}
+
+/* The links sit below a rule so the card ends on something, rather than trailing off. */
+.auth-card .auth-links {
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #eef1f6;
+  font-size: 13px;
+}
+
+.auth-card .auth-links a { color: var(--brand); }
+.auth-card .auth-links a:hover { text-decoration: underline; }
 
 .stack-form {
   display: grid;
@@ -2045,10 +2123,14 @@ summary {
   padding: 11px 12px;
 }
 
-.admin-sidebar nav a:hover {
-  background: linear-gradient(90deg, rgba(243, 111, 33, 0.92), rgba(246, 179, 0, 0.75));
-  color: #fff;
-  transform: translateX(2px);
+/* Hover-capable pointers only: on a touchscreen :hover latches after a tap, leaving a
+   row highlighted as though it were the current page. */
+@media (hover: hover) {
+  .admin-sidebar nav a:hover {
+    background: linear-gradient(90deg, rgba(243, 111, 33, 0.92), rgba(246, 179, 0, 0.75));
+    color: #fff;
+    transform: translateX(2px);
+  }
 }
 
 .admin-sidebar nav a.active {
@@ -4604,6 +4686,43 @@ summary:focus-visible {
 }
 
 @media (max-width: 620px) {
+  /* The page header costs about a third of a phone screen before any content starts:
+     "Admin" repeats what the bar above already says, and the subtitle explains a screen
+     the operator has just chosen and is looking at. Both are desktop affordances. */
+  .admin-topbar .eyebrow,
+  .admin-topbar-title p:not(.eyebrow) {
+    display: none;
+  }
+
+  .admin-topbar {
+    gap: 10px;
+    padding: 12px 16px;
+  }
+
+  .admin-topbar h1 {
+    font-size: 21px;
+  }
+
+  /* One scrolling row rather than two wrapped ones. The tabs stay reachable without
+     pushing the content they describe further down the screen. */
+  .report-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    margin-inline: -16px;
+    padding-inline: 16px;
+    padding-bottom: 2px;
+  }
+
+  .report-tabs::-webkit-scrollbar { display: none; }
+
+  .report-tabs a {
+    flex: 0 0 auto;
+    padding: 8px 13px;
+    font-size: 12.5px;
+  }
+
   .dashboard-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-metric { min-height: 72px; }
   .dashboard-category-breakdown { grid-template-columns: 1fr; }
@@ -4774,20 +4893,84 @@ summary:focus-visible {
     /* Matches the sidebar's horizontal padding so the dropdown lines up with
        the toggle instead of running to the viewport edge. */
     right: 14px;
-    top: calc(100% + 8px);
+    top: calc(100% + 10px);
     z-index: 40;
-    width: min(292px, calc(100vw - 24px));
-    /* A long menu must not run off the bottom of a short phone. */
-    max-height: calc(100vh - 100px);
+    width: min(320px, calc(100vw - 24px));
+    /* dvh, not vh: on a phone vh is the tallest the viewport ever gets, so a menu
+       sized in vh hides its last item behind the browser's own toolbar. */
+    max-height: calc(100dvh - 104px);
     overflow-y: auto;
     overscroll-behavior: contain;
     display: none;
     gap: 4px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 10px;
-    background: #111827;
-    padding: 10px;
-    box-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    /* The navy the bar above it uses, rather than a separate near-black, so the panel
+       reads as the bar opening rather than as a different component. */
+    background: linear-gradient(180deg, #0b3f7e 0%, #082f5f 100%);
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+    box-shadow: 0 24px 60px rgba(3, 15, 30, 0.5);
+  }
+
+  /* The scrim is drawn by the toggle itself, so a tap anywhere outside the panel lands
+     on the summary and closes the menu - no click-outside listener required. */
+  .admin-mobile-menu[open] summary::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(5, 18, 35, 0.55);
+  }
+
+  .admin-mobile-menu summary {
+    position: relative;
+    /* Above its own scrim, or the button would be dimmed and untappable while open. */
+    z-index: 41;
+    transition: background-color .18s ease, border-color .18s ease;
+  }
+
+  .admin-mobile-menu summary span {
+    transition: transform .2s ease, opacity .15s ease;
+  }
+
+  /* The bars fold into a cross, so the control says "close" while the menu is open. */
+  .admin-mobile-menu[open] summary {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .admin-mobile-menu[open] summary span:first-child { transform: translateY(6px) rotate(45deg); }
+  .admin-mobile-menu[open] summary span:nth-child(2) { opacity: 0; }
+  .admin-mobile-menu[open] summary span:last-child { transform: translateY(-6px) rotate(-45deg); }
+
+  /* Comfortable targets. 44px is the smallest a thumb hits reliably. */
+  .admin-sidebar nav a {
+    min-height: 44px;
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .admin-nav-group {
+    margin: 14px 12px 6px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.09);
+  }
+
+  /* The first group heads the panel, so a rule above it would float unattached. */
+  .admin-nav-entry:first-child .admin-nav-group {
+    margin-top: 2px;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .admin-logout button {
+    min-height: 44px;
+    border-radius: 9px;
   }
 
   .admin-mobile-menu[open] ~ .admin-nav-panel {
@@ -5545,4 +5728,205 @@ summary:focus-visible {
   .product-loading-summary div {
     animation: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Bulk SMS admin (/admin/sms)
+   --------------------------------------------------------------------------- */
+
+.dashboard-metric.teal { color: #0d9488; }
+.dashboard-metric > small.muted { color: #667085; }
+a.dashboard-metric { text-decoration: none; }
+a.dashboard-metric:hover { border-color: #c7d3e4; }
+
+.sms-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sms-card {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 16px 18px;
+}
+
+.sms-card > span { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.sms-card > strong { color: #172033; font-size: 26px; line-height: 1.15; }
+.sms-card > small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.sms-card.balance { border-color: rgba(13, 148, 136, .35); background: linear-gradient(160deg, #fff 40%, #effcf9 100%); }
+.sms-card.balance > strong { color: #0d9488; }
+.sms-card.recharge { border-color: rgba(243, 111, 33, .32); background: linear-gradient(160deg, #fff 40%, #fff6ef 100%); }
+
+.sms-card dl { display: grid; gap: 6px; margin: 2px 0 4px; }
+.sms-card dl > div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.sms-card dt { color: var(--muted); font-size: 12px; font-weight: 700; }
+.sms-card dd { margin: 0; color: #172033; font-size: 17px; font-weight: 800; letter-spacing: .02em; }
+.sms-card a { color: var(--brand); font-size: 12px; font-weight: 800; }
+
+.sms-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 18px 0 8px;
+}
+
+.sms-filter { display: flex; flex-wrap: wrap; gap: 6px; }
+.sms-filter a { border: 1px solid #dce3ec; border-radius: 999px; background: #fff; color: #526176; padding: 6px 14px; font-size: 12px; font-weight: 800; }
+.sms-filter a.active { border-color: var(--brand); background: var(--brand); color: #fff; }
+
+.sms-toolbar button {
+  min-height: 38px;
+  border: 1px solid #dce3ec;
+  border-radius: 7px;
+  background: #fff;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 16px;
+  cursor: pointer;
+}
+
+.sms-toolbar button:hover { border-color: var(--brand); color: var(--brand); }
+
+.sms-section-title { margin: 22px 0 8px; font-size: 15px; }
+
+.sms-campaign-row { grid-template-columns: minmax(240px, 2fr) 0.9fr 0.7fr 0.6fr 0.6fr 0.9fr; }
+.sms-message-row { grid-template-columns: 130px 130px 130px minmax(240px, 2fr) 60px 110px; }
+.sms-campaign-row small,
+.sms-message-row small { display: block; margin-top: 3px; color: #667085; font-size: 11px; }
+
+/* The full text is on the row's title attribute; truncating keeps a 160-character
+   message from setting the height of every row in the log. */
+.sms-message-body {
+  overflow: hidden;
+  color: #445068;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sms-pill {
+  display: inline-block;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #445068;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.sms-pill.delivered,
+.sms-pill.sent { background: #e7f7ef; color: #067a49; }
+.sms-pill.pending,
+.sms-pill.sending,
+.sms-pill.partial { background: #fff3e2; color: #b45309; }
+.sms-pill.failed,
+.sms-pill.undelivered { background: #fdeaea; color: #c02626; }
+
+.sms-composer { max-width: 760px; }
+.sms-composer label > small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.sms-field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; }
+
+.sms-meter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sms-meter strong { color: #172033; }
+.sms-meter-note { flex-basis: 100%; color: #8a93a5; }
+
+.sms-preview {
+  border: 1px solid #dce3ec;
+  border-left: 3px solid var(--brand);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+  color: #2b3648;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sms-preview > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.sms-warning {
+  border: 1px solid rgba(192, 38, 38, .28);
+  border-radius: 8px;
+  background: #fdeaea;
+  padding: 10px 14px;
+  color: #a51f1f;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.sms-audience {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 0;
+}
+
+.sms-audience legend { padding: 0 6px; color: #172033; font-size: 13px; font-weight: 800; }
+
+.sms-audience-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.sms-audience-option:hover { border-color: #c7d3e4; }
+.sms-audience-option input { width: 18px; height: 18px; margin: 0; }
+.sms-audience-option strong { display: block; font-size: 13px; }
+.sms-audience-option small { color: var(--muted); font-size: 11px; }
+.sms-audience-option b { color: var(--brand); font-size: 15px; }
+.sms-lookback { display: grid; gap: 4px; font-size: 12px; font-weight: 700; }
+
+.sms-estimate {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  border: 1px solid rgba(14, 82, 164, .2);
+  border-radius: 10px;
+  background: #f4f8fd;
+  padding: 14px 16px;
+}
+
+.sms-estimate span { display: block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.sms-estimate strong { display: block; margin: 2px 0; color: #0e52a4; font-size: 22px; }
+.sms-estimate small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+@media (max-width: 780px) {
+  .sms-field-row { grid-template-columns: 1fr; }
+  .sms-toolbar { flex-direction: column; align-items: stretch; }
+  .sms-toolbar button { width: 100%; }
 }

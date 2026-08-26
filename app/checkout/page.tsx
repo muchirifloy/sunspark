@@ -33,7 +33,18 @@ export default async function CheckoutPage() {
             </label>
             <label>
               Phone
-              <input name="customerPhone" defaultValue={customer?.phone ?? ""} />
+              {/* Required: order confirmation and progress texts go to this number. */}
+              <input
+                name="customerPhone"
+                defaultValue={customer?.phone ?? ""}
+                inputMode="tel"
+                pattern="(\+?254|0)?[17][0-9]{8}"
+                placeholder="0712345678"
+                required
+                title="Enter a Kenyan mobile number, for example 0712345678"
+                type="tel"
+              />
+              <small className="field-hint">We text your order confirmation and progress updates to this number.</small>
             </label>
             <label>
               Delivery note
