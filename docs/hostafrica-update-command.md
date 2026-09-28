@@ -23,7 +23,7 @@ cd ~/sunsparkbackend
 RUN_SEED=1 bash docs/hostafrica-deploy.sh
 ```
 
-The backend `dist/` files are committed, so HostAfrica does not need TypeScript or `tsx` to build, migrate, or seed.
+The backend `dist/` files are no longer committed — the deploy script builds them on the host (`npm run build`, i.e. `tsc`) on every run, so a stale locally-built `dist/` can never conflict with the next `git pull` again. `npm run migrate` and `npm run seed` run against that freshly built output.
 
 If the database already has the old Prisma tables and you want to copy those products/categories/users into the new backend tables, run this once:
 

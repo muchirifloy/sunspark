@@ -119,8 +119,9 @@ if [ "$BUILD_ON_HOST" = "1" ]; then
   echo "==> Building backend on host"
   npm run build
 else
-  echo "==> Skipping host build. Using committed apps/api/dist."
-  echo "    (Set BUILD_ON_HOST=1 if apps/api/dist may be behind apps/api/src.)"
+  echo "==> Skipping host build. Reusing whatever is already in apps/api/dist."
+  echo "    apps/api/dist is git-ignored and built fresh on the host, so this is only"
+  echo "    safe when dist already matches the current apps/api/src on this machine."
 fi
 
 if [ "$RUN_MIGRATE" = "1" ]; then

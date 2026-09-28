@@ -5,8 +5,6 @@ node_modules/
 .next/
 out/
 dist/
-!apps/api/dist/
-!apps/api/dist/**
 *.tsbuildinfo
 
 # Secrets and local environment
