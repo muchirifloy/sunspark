@@ -57,7 +57,7 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
           <strong>{formatMoney(product.priceCents)} <small>/{sellingUnitLabel(product.sellingUnit ?? "UNIT")}</small></strong>
           {product.compareAtCents ? <span>{formatMoney(product.compareAtCents)}</span> : null}
         </div>
-        <small>{product.stockQuantity > 0 ? `${product.stockQuantity} in stock` : "Out of stock"}</small>
+        {product.stockQuantity <= 0 ? <small>Out of stock</small> : null}
         <div className="product-actions">
           <Link href={`/product/${product.slug}`}>View</Link>
           <AddToCartButton action={addToCartAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} />

@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { CategoryTile } from "@/components/site/category-tile";
-import { ProductCard } from "@/components/site/product-card";
+import { ProductGridInfinite } from "@/components/site/product-grid-infinite";
 import { jsonLdHtml } from "@/lib/json-ld";
-import { getCategoryBySlug } from "@/lib/products/queries";
+import { loadMoreProducts } from "@/lib/products/actions";
+import { PRODUCTS_PAGE_SIZE, getCategoryBySlug } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
 
 export const dynamic = "force-dynamic";
@@ -95,11 +96,12 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
           </div>
         ) : null}
         {category.products.length ? (
-          <div className="product-grid">
-            {category.products.map((product) => (
-              <ProductCard product={product} key={product.id} />
-            ))}
-          </div>
+          <ProductGridInfinite
+            initialProducts={category.products}
+            loadMore={loadMoreProducts}
+            pageSize={PRODUCTS_PAGE_SIZE}
+            query={{ category: category.slug }}
+          />
         ) : (
           <div className="empty-state">
             <h2>{category.name} products</h2>

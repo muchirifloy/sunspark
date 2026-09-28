@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireOwnerAdmin } from "@/lib/auth/guards";
 import { apiFetch, ApiError } from "@/lib/api/client";
+import { settingsTag } from "@/lib/cache-tags";
 import { siteConfig } from "@/lib/site-config";
 
 export async function updateSettingsAction(formData: FormData) {
@@ -25,6 +26,7 @@ export async function updateSettingsAction(formData: FormData) {
     throw error;
   }
 
+  updateTag(settingsTag);
   revalidatePath("/");
   redirect("/admin/settings?notice=saved");
 }

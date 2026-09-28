@@ -109,7 +109,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             {product.brand ? <p className="product-brand">{product.brand}</p> : null}
             <h1>{product.name}</h1>
             <p className={product.stockQuantity > 0 ? "stock ok" : "stock out"}>
-              {product.stockQuantity > 0 ? `${product.stockQuantity} available` : "Out of stock"}
+              {product.stockQuantity > 0 ? "In stock" : "Out of stock"}
             </p>
             <div className="hero-actions">
               <ProductOptionPurchase action={addSelectedToCartAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} options={product.options} />

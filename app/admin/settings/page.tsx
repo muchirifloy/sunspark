@@ -11,7 +11,6 @@ type SettingsView = {
   site: {
     name?: string;
     email?: string;
-    phone?: string;
     location?: string;
     facebookUrl?: string;
     mapUrl?: string;
@@ -55,8 +54,8 @@ export default async function AdminSettingsPage({
           <div className="settings-fields">
             <label><span>Business name</span><input name="name" defaultValue={settings.site?.name ?? siteConfig.name} /></label>
             <label><span>Support email</span><input name="email" defaultValue={settings.site?.email ?? siteConfig.email} /></label>
-            <label><span>Phone</span><input name="phone" defaultValue={settings.site?.phone ?? siteConfig.phone} /></label>
             <label><span>WhatsApp phone</span><input name="whatsappPhone" defaultValue={settings.checkout?.whatsappPhone ?? siteConfig.whatsappPhone} /></label>
+            <p className="settings-field-full admin-note">Shown on the storefront (footer, help chat, checkout) as the single contact number, in +254 format.</p>
             <label className="settings-field-full"><span>Location</span><input name="location" defaultValue={settings.site?.location ?? siteConfig.location} /></label>
           </div>
         </section>
@@ -102,7 +101,7 @@ async function getSettings(): Promise<SettingsView> {
   try {
     const settings = await apiFetch<{ store_name?: string; support_email?: string; report_email?: string; whatsapp_phone?: string }>("/settings");
     return {
-      site: settings ? { name: settings.store_name, email: settings.support_email, phone: siteConfig.phone, location: siteConfig.location, facebookUrl: siteConfig.facebookUrl, mapUrl: siteConfig.mapUrl } : null,
+      site: settings ? { name: settings.store_name, email: settings.support_email, location: siteConfig.location, facebookUrl: siteConfig.facebookUrl, mapUrl: siteConfig.mapUrl } : null,
       checkout: settings ? { whatsappPhone: settings.whatsapp_phone, whatsappEnabled: true, mpesaEnabled: false } : null,
       reports: settings ? { recipient: settings.report_email } : null
     };

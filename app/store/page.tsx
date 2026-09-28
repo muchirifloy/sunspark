@@ -1,5 +1,6 @@
-import { ProductCard } from "@/components/site/product-card";
-import { getStoreCategories, getStoreProducts } from "@/lib/products/queries";
+import { ProductGridInfinite } from "@/components/site/product-grid-infinite";
+import { loadMoreProducts } from "@/lib/products/actions";
+import { PRODUCTS_PAGE_SIZE, getStoreCategories, getStoreProducts } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
 import type { Metadata } from "next";
 
@@ -20,7 +21,7 @@ export default async function StorePage({
 }) {
   const params = await searchParams;
   const [products, categories] = await Promise.all([
-    getStoreProducts({ q: params?.q, category: params?.category, limit: 50 }),
+    getStoreProducts({ q: params?.q, category: params?.category, limit: PRODUCTS_PAGE_SIZE }),
     getStoreCategories()
   ]);
 
@@ -53,15 +54,16 @@ export default async function StorePage({
         </aside>
         <div>
           <div className="store-toolbar">
-            <strong>{products.length} product{products.length === 1 ? "" : "s"} shown</strong>
+            <strong>Products</strong>
             <span>Search by name, brand, or description to narrow the catalogue.</span>
           </div>
           {products.length ? (
-            <div className="product-grid">
-              {products.map((product) => (
-                <ProductCard product={product} key={product.id} />
-              ))}
-            </div>
+            <ProductGridInfinite
+              initialProducts={products}
+              loadMore={loadMoreProducts}
+              pageSize={PRODUCTS_PAGE_SIZE}
+              query={{ q: params?.q, category: params?.category }}
+            />
           ) : (
             <div className="empty-state">
               <h2>No matching products</h2>

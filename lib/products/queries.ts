@@ -88,8 +88,16 @@ export const getStoreCategories = cache(async () => {
   return categories.sort((a, b) => storefrontCategoryRank(a.slug) - storefrontCategoryRank(b.slug));
 });
 
-export const getStoreProducts = cache(async (input: { q?: string; category?: string; limit?: number }) => {
-  return withFallback(apiFetch<Product[]>(`/products${toQueryString({ q: input.q, category: input.category, limit: input.limit ?? 50 })}`, catalogInit), []);
+// The default page size for storefront listings: the initial server render
+// and every subsequent "load more" scroll fetch the same number of products,
+// so offset math for the next page is just the count already on screen.
+export const PRODUCTS_PAGE_SIZE = 24;
+
+export const getStoreProducts = cache(async (input: { q?: string; category?: string; limit?: number; offset?: number }) => {
+  return withFallback(
+    apiFetch<Product[]>(`/products${toQueryString({ q: input.q, category: input.category, limit: input.limit ?? PRODUCTS_PAGE_SIZE, offset: input.offset })}`, catalogInit),
+    []
+  );
 });
 
 export const getCategoryBySlug = cache(async (slug: string) => {

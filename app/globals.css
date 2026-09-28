@@ -1069,6 +1069,38 @@ summary {
 .support-chat-panel .primary-btn { width: 100%; }
 .support-chat-close { width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); cursor: pointer; font-size: 20px; line-height: 1; }
 
+/* Fixed to the opposite corner from the WhatsApp help button, and hidden
+   (not just faded) while the footer is on screen so it never sits over
+   footer links. */
+.scroll-top-btn {
+  position: fixed;
+  z-index: 40;
+  left: 20px;
+  bottom: 20px;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.24);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px);
+  transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+}
+
+.scroll-top-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 .location-picker {
   display: grid;
   gap: 12px;
@@ -1238,6 +1270,19 @@ summary {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.product-grid-sentinel {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 4px;
+  min-height: 30px;
+}
+
+.product-grid-loading {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .product-slider {
   grid-auto-flow: column;
   grid-auto-columns: minmax(190px, 230px);
@@ -1350,7 +1395,7 @@ summary {
   display: grid;
   align-content: start;
   gap: 6px;
-  padding: 12px;
+  padding: 10px 12px;
   text-align: center;
   min-width: 0;
   overflow: hidden;
@@ -1449,7 +1494,7 @@ summary {
   display: grid;
   grid-template-columns: 0.82fr 1.18fr;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .product-actions a,
@@ -5554,6 +5599,19 @@ summary:focus-visible {
     gap: 12px;
   }
 
+  /* Homepage category rows slide horizontally above this breakpoint; on
+     phones that just strands most of the row off-screen, so they wrap into
+     the same 2-column grid the store and category pages already use. */
+  .product-slider {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-columns: unset;
+    overflow-x: visible;
+    scroll-snap-type: none;
+    padding-bottom: 0;
+    gap: 12px;
+  }
+
   .category-grid {
     grid-auto-flow: column;
     grid-auto-columns: minmax(136px, 44vw);
@@ -5659,10 +5717,6 @@ summary:focus-visible {
 
   .price-row small {
     font-size: 8px;
-  }
-
-  .product-body > small {
-    display: none;
   }
 
   .product-actions {

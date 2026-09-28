@@ -15,3 +15,13 @@ export const catalogRevalidateSeconds = Number(process.env.CATALOG_REVALIDATE_SE
 export const ordersTag = "orders";
 
 export const ordersRevalidateSeconds = Number(process.env.ORDERS_REVALIDATE_SECONDS ?? 30);
+
+/**
+ * Site settings (business name, support email, WhatsApp number) read by the
+ * header, footer and checkout across every storefront route. Same reasoning
+ * as the catalogue tag: a plain path revalidation does not reach shared
+ * layout chrome, so saving settings has to bust this tag instead.
+ */
+export const settingsTag = "settings";
+
+export const settingsRevalidateSeconds = Number(process.env.SETTINGS_REVALIDATE_SECONDS ?? 60);

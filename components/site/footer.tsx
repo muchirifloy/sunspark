@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { getStoreCategories } from "@/lib/products/queries";
 import { siteConfig } from "@/lib/site-config";
+import { formatWhatsAppDisplay, getStoreSettings } from "@/lib/settings";
 
 export async function Footer() {
-  const categories = await getStoreCategories();
+  const [categories, settings] = await Promise.all([getStoreCategories(), getStoreSettings()]);
 
   return (
     <footer className="site-footer">
@@ -12,7 +13,7 @@ export async function Footer() {
           <h2>Sunspark Electrical and Solar</h2>
           <p><a className="footer-location" href={siteConfig.mapUrl} rel="noreferrer" target="_blank">{siteConfig.location}</a></p>
           <p>
-            <a href={`https://wa.me/${siteConfig.whatsappPhone}`}>WhatsApp {siteConfig.phone}</a>
+            <a href={`https://wa.me/${settings.whatsappPhone}`}>WhatsApp {formatWhatsAppDisplay(settings.whatsappPhone)}</a>
           </p>
         </section>
         <section className="footer-links">

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { siteConfig } from "@/lib/site-config";
 
-export function SupportChat() {
+export function SupportChat({ whatsappPhone }: { whatsappPhone: string }) {
   const [open, setOpen] = useState(false);
   const message = "Hello Sunspark, I have loved the electricals you are selling, I have a request to make.";
-  const whatsappUrl = `https://wa.me/${siteConfig.whatsappPhone}?text=${encodeURIComponent(message)}`;
+  const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
 
   return <aside className="support-chat">
     {open ? (

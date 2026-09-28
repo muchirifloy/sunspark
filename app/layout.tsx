@@ -4,10 +4,12 @@ import { Montserrat } from "next/font/google";
 import { Footer } from "@/components/site/footer";
 import { Header } from "@/components/site/header";
 import { CampaignModal } from "@/components/site/campaign-modal";
+import { ScrollTopButton } from "@/components/site/scroll-top-button";
 import { SupportChat } from "@/components/site/support-chat";
 import { jsonLdHtml } from "@/lib/json-ld";
 import { isAdminPath, pathnameHeader } from "@/lib/request-context";
 import { getCampaigns } from "@/lib/products/queries";
+import { formatWhatsAppDisplay, getStoreSettings } from "@/lib/settings";
 import { siteConfig } from "@/lib/site-config";
 import "./globals.css";
 
@@ -64,14 +66,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const requestHeaders = await headers();
   const isAdminRoute = isAdminPath(requestHeaders.get(pathnameHeader));
   const campaigns = isAdminRoute ? [] : await getCampaigns();
+  const settings = isAdminRoute ? null : await getStoreSettings();
+  const whatsappPhone = settings?.whatsappPhone ?? siteConfig.whatsappPhone;
   const businessSchema = {
     "@context": "https://schema.org",
     "@type": "Store",
-    name: siteConfig.name,
+    name: settings?.name ?? siteConfig.name,
     url: siteConfig.url,
     image: `${siteConfig.url}/logo.jpg`,
-    telephone: siteConfig.phone,
-    email: siteConfig.email,
+    telephone: formatWhatsAppDisplay(whatsappPhone),
+    email: settings?.email ?? siteConfig.email,
     address: {
       "@type": "PostalAddress",
       streetAddress: "Duruma Road, Downtown Tower, second floor, shop number 8",
@@ -93,7 +97,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <>
             <Footer />
             <CampaignModal campaigns={campaigns} />
-            <SupportChat />
+            <SupportChat whatsappPhone={whatsappPhone} />
+            <ScrollTopButton />
           </>
         )}
       </body>

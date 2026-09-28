@@ -6,7 +6,7 @@ import { buildWhatsAppCheckoutUrl } from "@/lib/checkout/whatsapp";
 import { preventAdminShopping } from "@/lib/auth/guards";
 import { formatMoney } from "@/lib/money";
 import { createOrderFromCart } from "@/lib/orders/order-service";
-import { siteConfig } from "@/lib/site-config";
+import { getStoreSettings } from "@/lib/settings";
 
 export async function checkoutAction(formData: FormData): Promise<ActionResult> {
   try {
@@ -32,8 +32,9 @@ export async function checkoutAction(formData: FormData): Promise<ActionResult> 
     });
 
     if (paymentMethod === "WHATSAPP") {
+      const settings = await getStoreSettings();
       return { ok: true, message: "Order placed.", redirectTo: buildWhatsAppCheckoutUrl({
-        phone: siteConfig.whatsappPhone,
+        phone: settings.whatsappPhone,
         orderNumber: order.orderNumber,
         customerName: order.customerName,
         deliveryNote: order.deliveryNote ?? undefined,

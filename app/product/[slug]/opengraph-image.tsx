@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import { getPrimaryImage, publicImageUrl } from "@/lib/products/images";
 import { getProductBySlugStrict } from "@/lib/products/queries";
+import { formatWhatsAppDisplay, getStoreSettings } from "@/lib/settings";
 import { siteConfig } from "@/lib/site-config";
 
 export const runtime = "nodejs";
@@ -38,7 +39,7 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
 
   const image = getPrimaryImage(product.images);
   const imageUrl = image ? publicImageUrl(image.url) : `${siteConfig.url}/logo.jpg`;
-  const safeImageUrl = await safeImageDataUrl(imageUrl);
+  const [safeImageUrl, settings] = await Promise.all([safeImageDataUrl(imageUrl), getStoreSettings()]);
 
   return new ImageResponse(
     (
@@ -116,7 +117,7 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
           <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "5px" }}>
               <div style={{ display: "flex", fontSize: 40, fontWeight: 900 }}>{price(product.priceCents)}</div>
-              <div style={{ display: "flex", fontSize: 18, opacity: 0.88 }}>WhatsApp {siteConfig.phone}</div>
+              <div style={{ display: "flex", fontSize: 18, opacity: 0.88 }}>WhatsApp {formatWhatsAppDisplay(settings.whatsappPhone)}</div>
             </div>
             <div
               style={{

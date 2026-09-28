@@ -920,7 +920,8 @@ app.get("/products", asyncRoute(async (request, response) => {
   response.json(await listProducts({
     q: String(request.query.q ?? ""),
     category: String(request.query.category ?? ""),
-    limit: Number(request.query.limit ?? 120)
+    limit: Number(request.query.limit ?? 120),
+    offset: Number(request.query.offset ?? 0)
   }));
 }));
 

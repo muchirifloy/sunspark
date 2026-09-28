@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { siteConfig } from "@/lib/site-config";
+import { getStoreSettings } from "@/lib/settings";
 
 export const metadata: Metadata = {
   title: "Delivery, Privacy and FAQ",
   description: "Sunspark Electrical and Solar delivery, privacy and shopping questions."
 };
 
-export default function PoliciesPage() {
+export default async function PoliciesPage() {
+  const settings = await getStoreSettings();
+
   return (
     <section className="policy-experiment-page">
       <div className="container policy-experiment-shell">
@@ -17,7 +19,7 @@ export default function PoliciesPage() {
           <p>Quick answers for shopping electricals, electronics, and solar accessories from our Nairobi CBD shop.</p>
           <div className="policy-hero-actions">
             <Link className="primary-btn" href="/store">Browse store</Link>
-            <Link className="secondary-btn" href={`https://wa.me/${siteConfig.whatsappPhone}`}>WhatsApp us</Link>
+            <Link className="secondary-btn" href={`https://wa.me/${settings.whatsappPhone}`}>WhatsApp us</Link>
           </div>
         </div>
 
@@ -51,7 +53,7 @@ export default function PoliciesPage() {
             <p>No. Products can stay hidden until stock, images and details are confirmed.</p>
             <h3>How do I confirm the exact location?</h3>
             <p>Use the map link in the footer or contact the shop on WhatsApp.</p>
-            <Link className="primary-btn" href={`https://wa.me/${siteConfig.whatsappPhone}`}>
+            <Link className="primary-btn" href={`https://wa.me/${settings.whatsappPhone}`}>
               Contact Sunspark
             </Link>
           </article>
