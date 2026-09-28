@@ -1268,10 +1268,13 @@ summary {
 
 /* Homepage category rows used to slide horizontally at every width. Sliding
    never scrolled well on any device, so .product-slider now just wraps like
-   .product-grid at every breakpoint - the name stuck, the behavior didn't. */
+   .product-grid at every breakpoint - the name stuck, the behavior didn't.
+   auto-fill with a capped card width (not repeat(N, 1fr)) keeps every card
+   the same size regardless of row count, instead of a near-empty row (or a
+   single result) stretching its one or two cards to fill the whole width. */
 .product-grid,
 .product-slider {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 230px));
 }
 
 .product-grid-sentinel {
