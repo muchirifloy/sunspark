@@ -1266,7 +1266,11 @@ summary {
   text-transform: uppercase;
 }
 
-.product-grid {
+/* Homepage category rows used to slide horizontally at every width. Sliding
+   never scrolled well on any device, so .product-slider now just wraps like
+   .product-grid at every breakpoint - the name stuck, the behavior didn't. */
+.product-grid,
+.product-slider {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -1281,19 +1285,6 @@ summary {
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
-}
-
-.product-slider {
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(190px, 230px);
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: inline mandatory;
-  padding-bottom: 12px;
-}
-
-.product-slider .product-card {
-  scroll-snap-align: start;
 }
 
 .section-title {
@@ -5220,7 +5211,8 @@ summary:focus-visible {
     gap: 8px;
   }
 
-  .product-grid {
+  .product-grid,
+  .product-slider {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
   }
@@ -5594,21 +5586,9 @@ summary:focus-visible {
     padding: 6px 0 5px;
   }
 
-  .product-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  /* Homepage category rows slide horizontally above this breakpoint; on
-     phones that just strands most of the row off-screen, so they wrap into
-     the same 2-column grid the store and category pages already use. */
+  .product-grid,
   .product-slider {
-    grid-auto-flow: row;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-auto-columns: unset;
-    overflow-x: visible;
-    scroll-snap-type: none;
-    padding-bottom: 0;
     gap: 12px;
   }
 
@@ -5655,12 +5635,6 @@ summary:focus-visible {
 
   .category-tile-copy small {
     display: none;
-  }
-
-  .product-slider {
-    grid-auto-columns: minmax(164px, 52vw);
-    gap: 12px;
-    padding-bottom: 8px;
   }
 
   .product-body {
