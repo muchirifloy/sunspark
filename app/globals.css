@@ -847,10 +847,15 @@ summary {
   background: var(--soft);
 }
 
-.category-grid,
+.category-grid {
+  display: grid;
+  gap: 14px;
+}
+
 .product-grid,
 .product-slider {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -1269,12 +1274,16 @@ summary {
 /* Homepage category rows used to slide horizontally at every width. Sliding
    never scrolled well on any device, so .product-slider now just wraps like
    .product-grid at every breakpoint - the name stuck, the behavior didn't.
-   auto-fill with a capped card width (not repeat(N, 1fr)) keeps every card
-   the same size regardless of row count, instead of a near-empty row (or a
-   single result) stretching its one or two cards to fill the whole width. */
-.product-grid,
-.product-slider {
-  grid-template-columns: repeat(auto-fill, minmax(190px, 230px));
+   Flex (not CSS Grid) is what makes this work without leftover blank space:
+   a grid with repeat(auto-fill, ...) or repeat(N, ...) always reserves N
+   column tracks even when a row has fewer cards than that, which is exactly
+   the empty gap this replaced. Flex just stops each row after its last real
+   card, and flex-grow: 0 below keeps cards from stretching into that space
+   the way an unconstrained flex or a grid fr track would. */
+.product-grid .product-card,
+.product-slider .product-card {
+  flex: 0 1 230px;
+  min-width: 190px;
 }
 
 .product-grid-sentinel {
@@ -5216,8 +5225,13 @@ summary:focus-visible {
 
   .product-grid,
   .product-slider {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
+  }
+
+  .product-grid .product-card,
+  .product-slider .product-card {
+    flex: 0 0 calc((100% - 24px) / 3);
+    min-width: 0;
   }
 
   .store-aside {
@@ -5591,8 +5605,13 @@ summary:focus-visible {
 
   .product-grid,
   .product-slider {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+  }
+
+  .product-grid .product-card,
+  .product-slider .product-card {
+    flex: 0 0 calc((100% - 12px) / 2);
+    min-width: 0;
   }
 
   .category-grid {
