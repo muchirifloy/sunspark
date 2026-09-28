@@ -1276,14 +1276,20 @@ summary {
    .product-grid at every breakpoint - the name stuck, the behavior didn't.
    Flex (not CSS Grid) is what makes this work without leftover blank space:
    a grid with repeat(auto-fill, ...) or repeat(N, ...) always reserves N
-   column tracks even when a row has fewer cards than that, which is exactly
-   the empty gap this replaced. Flex just stops each row after its last real
-   card, and flex-grow: 0 below keeps cards from stretching into that space
-   the way an unconstrained flex or a grid fr track would. */
+   column tracks even when a row has fewer cards than that. Flex just stops
+   each row after its last real card - but flex still decides how many cards
+   fit a row using their UNSHRUNK size (flex-basis), so a basis of 230px
+   made it wrap a 5th card away even on widths where 5 cards would have
+   fit fine after shrinking a little. flex-basis 190px (the floor these
+   cards already render at on phones) lets that 5th card be considered;
+   flex-grow: 1 then expands every card actually placed on the row back up
+   to fill it, capped by max-width so a thin row can't re-balloon a card
+   past the size that started this. */
 .product-grid .product-card,
 .product-slider .product-card {
-  flex: 0 1 230px;
+  flex: 1 1 190px;
   min-width: 190px;
+  max-width: 230px;
 }
 
 .product-grid-sentinel {
