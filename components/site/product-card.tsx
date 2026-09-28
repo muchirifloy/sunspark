@@ -59,7 +59,6 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
         </div>
         {product.stockQuantity <= 0 ? <small>Out of stock</small> : null}
         <div className="product-actions">
-          <Link href={`/product/${product.slug}`}>View</Link>
           <AddToCartButton action={addToCartAction.bind(null, product.slug)} disabled={product.stockQuantity <= 0} />
         </div>
       </div>

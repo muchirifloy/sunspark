@@ -856,6 +856,7 @@ summary {
 .product-slider {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -1278,18 +1279,17 @@ summary {
    a grid with repeat(auto-fill, ...) or repeat(N, ...) always reserves N
    column tracks even when a row has fewer cards than that. Flex just stops
    each row after its last real card - but flex still decides how many cards
-   fit a row using their UNSHRUNK size (flex-basis), so a basis of 230px
-   made it wrap a 5th card away even on widths where 5 cards would have
-   fit fine after shrinking a little. flex-basis 190px (the floor these
-   cards already render at on phones) lets that 5th card be considered;
-   flex-grow: 1 then expands every card actually placed on the row back up
-   to fill it, capped by max-width so a thin row can't re-balloon a card
-   past the size that started this. */
+   fit a row using their UNSHRUNK size (flex-basis), so too high a basis
+   wraps a card away even on widths where it would have fit fine after
+   shrinking a little. flex-grow: 1 then expands every card actually placed
+   on the row back up to fill it, capped by max-width so a thin row can't
+   re-balloon a card past a normal size. 160-200px targets the same card
+   width a reference catalogue (Healthfield Pharmacy) renders at. */
 .product-grid .product-card,
 .product-slider .product-card {
-  flex: 1 1 190px;
-  min-width: 190px;
-  max-width: 230px;
+  flex: 1 1 160px;
+  min-width: 160px;
+  max-width: 200px;
 }
 
 .product-grid-sentinel {
@@ -1420,7 +1420,6 @@ summary {
 
 .product-body h3 {
   margin: 0;
-  min-height: 36px;
   font-size: 14px;
   line-height: 1.25;
   text-transform: uppercase;
@@ -1450,21 +1449,36 @@ summary {
   flex-wrap: wrap;
 }
 
+.price-row {
+  gap: 4px;
+}
+
 .price-row strong,
 .detail-price strong {
   color: var(--spark);
 }
 
 .price-row strong {
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.1;
+}
+
+.price-row strong small {
+  font-size: 10px;
 }
 
 .price-row span,
 .detail-price span {
   color: var(--muted);
-  font-size: 12px;
   text-decoration: line-through;
+}
+
+.detail-price span {
+  font-size: 12px;
+}
+
+.price-row span {
+  font-size: 11px;
 }
 
 .product-option-purchase {
@@ -1499,21 +1513,21 @@ summary {
   padding: 10px 12px;
 }
 
+/* Just the cart button now - the card image and name already link to the
+   product page, so a separate "View" button was a second link to the same
+   place, taking up half the row for no reason. */
 .product-actions {
   display: grid;
-  grid-template-columns: 0.82fr 1.18fr;
-  gap: 8px;
   margin-top: 4px;
 }
 
-.product-actions a,
 .product-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   min-width: 0;
-  min-height: 38px;
+  min-height: 34px;
   border: 1px solid var(--line);
   border-radius: 5px;
   font-weight: 700;
@@ -1521,20 +1535,10 @@ summary {
   white-space: nowrap;
 }
 
-.product-actions a:first-child {
-  background: #fff;
-  color: var(--ink);
-}
-
 .product-actions .inline-cart-action button {
   border-color: var(--spark);
   background: var(--spark);
   color: #fff;
-}
-
-.product-actions a:first-child:hover {
-  border-color: var(--spark);
-  color: var(--spark);
 }
 
 .product-actions .inline-cart-action button:hover {
@@ -2309,9 +2313,7 @@ button,
 .primary-btn,
 .secondary-btn,
 .table-link,
-.admin-sidebar nav a,
-.product-actions a,
-.product-actions button {
+.admin-sidebar nav a {
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
@@ -5136,18 +5138,6 @@ summary:focus-visible {
     width: 100%;
   }
 
-  .product-actions,
-  .product-card:hover .product-actions {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .product-actions a:first-child,
-  .product-card:hover .product-actions a:first-child {
-    opacity: 1;
-    padding: 0 8px;
-    transform: none;
-  }
-
   .admin-filter {
     grid-template-columns: 1fr;
   }
@@ -5722,13 +5712,10 @@ summary:focus-visible {
   }
 
   .product-actions {
-    gap: 5px;
     margin-top: 3px;
-    grid-template-columns: 0.9fr 1fr;
     min-width: 0;
   }
 
-  .product-actions a,
   .product-actions button {
     min-height: 30px;
     padding: 0 4px;
