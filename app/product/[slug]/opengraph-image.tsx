@@ -74,7 +74,7 @@ export default async function ProductOpenGraphImage({ params }: { params: Promis
               style={{
                 width: "100%",
                 height: "100%",
-                objectFit: "contain"
+                objectFit: "cover"
               }}
             />
           ) : (

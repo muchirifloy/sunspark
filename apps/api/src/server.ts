@@ -719,14 +719,44 @@ function productWhere(filters: ProductListFilters) {
     where.push("p.is_hot_deal = TRUE");
   }
   for (const term of terms) {
+    // A shopper typing "2.5mm" should still find a product stored as "2.5 mm" -
+    // spacing and hyphens are typography, not part of what they're searching
+    // for. The stripped comparison runs alongside the literal one rather than
+    // replacing it, so it only ever adds matches, never removes any.
+    const looseTerm = term.toLowerCase().replace(/[\s-]/g, "");
     where.push(`(
       p.name LIKE ? OR p.slug LIKE ? OR p.brand LIKE ? OR p.short_description LIKE ? OR
-      p.description LIKE ? OR p.seo_title LIKE ? OR p.seo_description LIKE ? OR p.seo_keywords LIKE ? OR c.name LIKE ?
+      p.description LIKE ? OR p.seo_title LIKE ? OR p.seo_description LIKE ? OR p.seo_keywords LIKE ? OR c.name LIKE ? OR
+      REPLACE(REPLACE(LOWER(p.name), ' ', ''), '-', '') LIKE ?
     )`);
-    values.push(...Array(9).fill(`%${term}%`));
+    values.push(...Array(9).fill(`%${term}%`), `%${looseTerm}%`);
   }
 
   return { where, values };
+}
+
+/**
+ * Ranks search results so an exact or near match on the product name sorts
+ * ahead of a product that only matches on, say, its description or category -
+ * without this, two matches order purely by is_featured/is_hot_deal/updated_at
+ * regardless of how well either actually matches what was typed.
+ */
+function relevanceOrder(q: string | undefined): { sql: string; values: unknown[] } {
+  const query = q?.trim().toLowerCase();
+  if (!query) return { sql: "", values: [] };
+
+  const looseQuery = query.replace(/[\s-]/g, "");
+  return {
+    sql: `CASE
+        WHEN LOWER(p.name) = ? THEN 0
+        WHEN LOWER(p.name) LIKE ? THEN 1
+        WHEN LOWER(p.name) LIKE ? THEN 2
+        WHEN REPLACE(REPLACE(LOWER(p.name), ' ', ''), '-', '') LIKE ? THEN 3
+        ELSE 4
+      END,
+      `,
+    values: [query, `${query}%`, `%${query}%`, `%${looseQuery}%`]
+  };
 }
 
 async function countProducts(filters: ProductListFilters = {}) {
@@ -743,20 +773,20 @@ async function countProducts(filters: ProductListFilters = {}) {
 
 async function listProducts(filters: ProductListFilters = {}) {
   const { where, values } = productWhere(filters);
+  const relevance = relevanceOrder(filters.q);
 
   const maxLimit = 2000;
   const limit = Math.min(Math.max(filters.limit ?? 100, 1), maxLimit);
   const offset = Math.max(filters.offset ?? 0, 0);
-  values.push(limit, offset);
 
   const rows = await query<ProductRow>(
     `SELECT p.*, c.name AS category_name, c.slug AS category_slug
      FROM products p
      JOIN categories c ON c.id = p.category_id
      WHERE ${where.join(" AND ")}
-     ORDER BY p.is_featured DESC, p.is_hot_deal DESC, p.updated_at DESC
+     ORDER BY ${relevance.sql}p.is_featured DESC, p.is_hot_deal DESC, p.updated_at DESC
      LIMIT ? OFFSET ?`,
-    values
+    [...values, ...relevance.values, limit, offset]
   );
   const [imageMap, optionMap] = await Promise.all([
     imagesForProducts(rows.map((row) => row.id)),

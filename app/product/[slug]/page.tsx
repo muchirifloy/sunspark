@@ -117,7 +117,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 <PendingButton className="secondary-btn" pendingText="Saving...">Wishlist</PendingButton>
               </form>
               <ProductShareButton
-                text={`Check this product from ${siteConfig.name}: ${product.name}`}
+                text={product.name}
                 title={product.name}
                 url={productUrl(product.slug)}
               />
