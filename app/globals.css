@@ -4872,7 +4872,34 @@ summary:focus-visible {
 
 .order-admin-heading,
 .order-admin-row {
-  grid-template-columns: 1fr 1.4fr 0.8fr 1fr 1fr 116px;
+  /* Was `1fr 1.4fr 0.8fr 1fr 1fr 116px`, which gave ~230px each to two short
+     dropdowns while squeezing three controls into 116px. They stacked three
+     deep and every row stood 129px tall. Proportioned like .invoice-row now. */
+  /* Minimums kept as tight as the content allows -- they decide when the
+     table starts scrolling sideways, and the content column is ~312px narrower
+     than the window once the sidebar and padding are taken out. The 198px for
+     the actions is the floor that keeps Save, Receipt and Delete on one line;
+     122px keeps a six-figure total from wrapping. */
+  grid-template-columns: minmax(128px, 1.1fr) minmax(160px, 1.4fr) minmax(122px, 0.6fr) minmax(104px, 0.7fr) minmax(104px, 0.7fr) minmax(198px, 0.95fr);
+}
+
+/* Orders put a second line under the order number and the customer -- date,
+   phone, delivery. Without this the <small> stays inline and the order number
+   runs straight into the date ("SUN-2081855528/09/2026"). Matches the rule
+   .invoice-row and .category-admin-row already have. */
+/* A six-figure total broke across two lines ("KSH" then the amount) in the
+   old 95px column. The table already scrolls when space runs out, which is
+   better than splitting a money value. */
+.order-total {
+  white-space: nowrap;
+}
+
+.order-admin-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  margin-top: 3px;
 }
 
 .payment-heading,
@@ -4898,15 +4925,48 @@ summary:focus-visible {
   min-height: 36px;
 }
 
-.order-admin-actions {
-  display: grid;
-  gap: 5px;
-  justify-items: stretch;
+/* Compact rows: the base .admin-table-row padding and the 38px select were
+   sized for a table with fewer controls per row. */
+.order-admin-heading,
+.order-admin-row {
+  padding: 7px 10px;
+  gap: 8px;
+  font-size: 12.5px;
 }
 
-.order-admin-actions .table-link {
+.order-admin-row select {
+  min-height: 32px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+/* Side by side rather than stacked: three controls in a column were most of
+   the old row height. */
+.order-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-admin-actions .confirm-delete-form {
+  display: flex;
+}
+
+/* One size and one radius for the whole group, so a pill, a rectangle and a
+   red rectangle stop sitting next to each other at different heights. Scoped
+   to this group, leaving .payment-row's buttons as they were. */
+.order-admin-actions .table-link,
+.order-admin-actions button {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  min-height: 32px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 12px;
   text-align: center;
+  white-space: nowrap;
 }
 
 @media (max-width: 860px) {
@@ -6414,7 +6474,9 @@ a.dashboard-metric:hover { border-color: #c7d3e4; }
 .order-admin-row button.danger-link,
 .payment-row button.danger-link {
   border: 1px solid #fecaca;
-  border-radius: 5px;
+  /* 6px to match the other controls in .order-admin-actions, which this
+     selector would otherwise outrank with the .table-link default of 5px. */
+  border-radius: 6px;
   background: #fff1f2;
   color: #b91c1c;
   min-height: 32px;

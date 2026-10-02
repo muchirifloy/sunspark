@@ -13,7 +13,7 @@ import type { Order } from "@/lib/types";
 export function OrderTable({ canDelete = false, emptyMessage, orders }: { canDelete?: boolean; emptyMessage: string; orders: Order[] }) {
   return (
     <div className="admin-table">
-      <div className="admin-table-row order-admin-heading">
+      <div className="admin-table-row order-admin-heading heading">
         <span>Order</span>
         <span>Customer</span>
         <span>Total</span>
@@ -42,19 +42,18 @@ The order, its items and its invoice record are removed for good. This cannot be
             </strong>
             <span>
               <Link className="admin-record-link" href={orderHref}>{order.customerName}</Link>
-              <br />
               <small>{order.customerPhone ?? order.customerEmail}</small>
               {order.deliveryLocation ? <small>{order.deliveryLocation}</small> : null}
               {order.deliveryMapUrl ? <a className="map-text-link" href={order.deliveryMapUrl} rel="noreferrer" target="_blank">Open map</a> : null}
             </span>
-            <span>{formatMoney(order.totalCents)}</span>
+            <span className="order-total">{formatMoney(order.totalCents)}</span>
             <OrderStatusControls
               action={updateOrderAction.bind(null, order.id)}
               extraActions={canDelete ? (
                 <ConfirmDeleteForm
                   action={deleteOrderAction.bind(null, order.id)}
                   confirmMessage={confirmMessage}
-                  label="Delete order"
+                  label="Delete"
                 />
               ) : null}
               initialPaymentStatus={order.paymentStatus}
