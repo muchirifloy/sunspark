@@ -1941,6 +1941,81 @@ app.patch("/admin/orders/:id", asyncRoute(async (request, response) => {
   response.json({ ok: true });
 }));
 
+/**
+ * Statuses where the goods have already left the building. Deleting one of
+ * these removes the paperwork but must not hand stock back, because the stock
+ * genuinely is gone. Every other status (pending, confirmed, processing, ready,
+ * cancelled) still has the goods on the shelf, so the deduction is reversed.
+ *
+ * Nothing else in the app ever returns stock -- cancelling an order only flips
+ * its status -- so there is no path that could credit the same items twice.
+ */
+const dispatchedOrderStatuses = new Set(["COMPLETED"]);
+
+/**
+ * Removes an order and everything that hangs off it. order_items and the
+ * numbered invoices row cascade; the stock the sale consumed is handed back
+ * unless the goods were already dispatched.
+ *
+ * Shared by deleting an order directly and by deleting a finalized invoice, so
+ * the stock rule cannot drift between the two entry points.
+ */
+async function removeOrder(
+  connection: Awaited<ReturnType<typeof pool.getConnection>>,
+  orderId: string
+) {
+  const orderRows = await connection.query(
+    "SELECT id, order_number, status FROM orders WHERE id = ? LIMIT 1",
+    [orderId]
+  ) as { id: string; order_number: string; status: string }[];
+  const order = orderRows[0];
+  if (!order) throw new HttpError(404, "Order not found.");
+
+  const dispatched = dispatchedOrderStatuses.has(String(order.status));
+  const items = await connection.query(
+    "SELECT product_id, quantity, stock_deducted FROM order_items WHERE order_id = ?",
+    [orderId]
+  ) as { product_id: string | null; quantity: number; stock_deducted: number | null }[];
+
+  if (!dispatched) {
+    for (const item of items) {
+      // A line whose product was deleted since the sale has nothing to credit.
+      if (!item.product_id) continue;
+      const amount = Number(item.stock_deducted ?? item.quantity);
+      if (amount > 0) {
+        await connection.query(
+          "UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?",
+          [amount, item.product_id]
+        );
+      }
+    }
+  }
+
+  // Any document that produced this order goes back to being a draft rather
+  // than staying marked COMPLETED while pointing at an order that is gone. A
+  // caller deleting the document itself removes it straight afterwards.
+  const documentRows = await connection.query(
+    "SELECT id, reference FROM draft_documents WHERE order_id = ?",
+    [orderId]
+  ) as { id: string; reference: string }[];
+  if (documentRows.length) {
+    await connection.query("UPDATE draft_documents SET status = 'DRAFT', order_id = NULL WHERE order_id = ?", [orderId]);
+  }
+
+  await connection.query("DELETE FROM orders WHERE id = ?", [orderId]);
+
+  return {
+    orderNumber: String(order.order_number),
+    stockRestored: !dispatched,
+    revertedDocuments: documentRows.map((row) => row.reference)
+  };
+}
+
+app.delete("/admin/orders/:id", asyncRoute(async (request, response) => {
+  const result = await transaction(async (connection) => removeOrder(connection, routeParam(request.params.id)));
+  response.json({ ok: true, ...result });
+}));
+
 function documentReference(kind: "INVOICE" | "QUOTATION") {
   const prefix = kind === "QUOTATION" ? "QUO" : "INV-DRAFT";
   return `${prefix}-${Date.now().toString().slice(-8)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
@@ -1953,21 +2028,23 @@ app.get("/admin/draft-documents", asyncRoute(async (request, response) => {
   const values: unknown[] = [];
 
   if (q) {
-    where.push("(reference LIKE ? OR customer_name LIKE ? OR customer_email LIKE ? OR customer_phone LIKE ?)");
+    where.push("(d.reference LIKE ? OR d.customer_name LIKE ? OR d.customer_email LIKE ? OR d.customer_phone LIKE ?)");
     values.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
   // DRAFT is the only state that still needs work: a finalized invoice has
   // become an order and a cancelled one is history.
-  if (group === "active") where.push("status = 'DRAFT'");
-  if (group === "past") where.push("status IN ('COMPLETED', 'CANCELLED')");
+  if (group === "active") where.push("d.status = 'DRAFT'");
+  if (group === "past") where.push("d.status IN ('COMPLETED', 'CANCELLED')");
 
   const documents = await query<Record<string, unknown>>(
-    `SELECT id, reference, kind, status, order_id AS orderId, customer_name AS customerName,
-      customer_email AS customerEmail, customer_phone AS customerPhone, payment_method AS paymentMethod,
-      subtotal_cents AS subtotalCents, total_cents AS totalCents, created_at AS createdAt, updated_at AS updatedAt
-     FROM draft_documents
+    `SELECT d.id, d.reference, d.kind, d.status, d.order_id AS orderId, d.customer_name AS customerName,
+      d.customer_email AS customerEmail, d.customer_phone AS customerPhone, d.payment_method AS paymentMethod,
+      d.subtotal_cents AS subtotalCents, d.total_cents AS totalCents, d.created_at AS createdAt, d.updated_at AS updatedAt,
+      o.order_number AS orderNumber, o.status AS orderStatus
+     FROM draft_documents d
+     LEFT JOIN orders o ON o.id = d.order_id
      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-     ORDER BY updated_at DESC
+     ORDER BY d.updated_at DESC
      LIMIT 100`,
     values
   );
@@ -1987,10 +2064,13 @@ app.get("/admin/draft-documents", asyncRoute(async (request, response) => {
 
 app.get("/admin/draft-documents/:id", asyncRoute(async (request, response) => {
   const documents = await query<Record<string, unknown>>(
-    `SELECT id, reference, kind, status, order_id AS orderId, customer_name AS customerName,
-      customer_email AS customerEmail, customer_phone AS customerPhone, payment_method AS paymentMethod,
-      subtotal_cents AS subtotalCents, total_cents AS totalCents, created_at AS createdAt, updated_at AS updatedAt
-     FROM draft_documents WHERE id = ? LIMIT 1`,
+    `SELECT d.id, d.reference, d.kind, d.status, d.order_id AS orderId, d.customer_name AS customerName,
+      d.customer_email AS customerEmail, d.customer_phone AS customerPhone, d.payment_method AS paymentMethod,
+      d.subtotal_cents AS subtotalCents, d.total_cents AS totalCents, d.created_at AS createdAt, d.updated_at AS updatedAt,
+      o.order_number AS orderNumber, o.status AS orderStatus
+     FROM draft_documents d
+     LEFT JOIN orders o ON o.id = d.order_id
+     WHERE d.id = ? LIMIT 1`,
     [request.params.id]
   );
   if (!documents[0]) throw new HttpError(404, "Document not found.");
@@ -2216,6 +2296,39 @@ app.post("/admin/draft-documents/:id/finalize", asyncRoute(async (request, respo
   });
 
   response.json(order);
+}));
+
+app.delete("/admin/draft-documents/:id", asyncRoute(async (request, response) => {
+  const documentId = routeParam(request.params.id);
+  const rows = await query<{ id: string; order_id: string | null; reference: string }>(
+    "SELECT id, order_id, reference FROM draft_documents WHERE id = ? LIMIT 1",
+    [documentId]
+  );
+  const document = rows[0];
+  if (!document) throw new HttpError(404, "Document not found.");
+
+  const result = await transaction(async (connection) => {
+    // A finalized invoice has an order behind it that already moved stock.
+    // Deleting the document takes that order with it, under the same stock rule
+    // as deleting the order directly -- otherwise the sale would survive with no
+    // paperwork behind it, or the stock would be left wrong.
+    const order = document.order_id ? await removeOrder(connection, document.order_id) : null;
+
+    // draft_document_items cascade. They hold an ON DELETE RESTRICT reference to
+    // products, so clearing them also unblocks deleting those products.
+    const deleted = await connection.query("DELETE FROM draft_documents WHERE id = ?", [documentId]) as { affectedRows?: number };
+    if (!deleted.affectedRows) throw new HttpError(404, "Document not found.");
+
+    return order;
+  });
+
+  response.json({
+    ok: true,
+    reference: document.reference,
+    hadOrder: Boolean(result),
+    orderNumber: result ? result.orderNumber : null,
+    stockRestored: result ? result.stockRestored : false
+  });
 }));
 
 const authSchema = z.object({

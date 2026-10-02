@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import type { ActionResult } from "@/lib/actions/result";
 import type { OrderStatus, PaymentStatus } from "@/lib/types";
 
 export function OrderStatusControls({
   action,
+  extraActions,
   initialPaymentStatus,
   initialStatus,
   receiptHref,
 }: {
   action: (formData: FormData) => Promise<ActionResult>;
+  /** Rendered beside the receipt link. Keeps row-level actions inside this
+      column instead of adding a seventh cell to a six-column grid. */
+  extraActions?: ReactNode;
   initialPaymentStatus: PaymentStatus;
   initialStatus: OrderStatus;
   receiptHref?: string;
@@ -46,6 +50,7 @@ export function OrderStatusControls({
       <div className="order-admin-actions">
         <button aria-busy={isPending} className="order-save-btn" disabled={isPending || !isDirty} onClick={save} type="button">{isPending ? "Saving..." : isDirty ? "Save" : message && !isDirty ? "Saved ✓" : "Saved"}</button>
         {receiptHref ? <Link className="table-link receipt-link" href={receiptHref}>Receipt</Link> : null}
+        {extraActions}
         {message && !message.startsWith("Order saved") ? <small className="inline-action-error" role="alert">{message}</small> : null}
       </div>
     </>

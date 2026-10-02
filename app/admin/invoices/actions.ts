@@ -4,7 +4,7 @@ import type { DraftInvoiceKind } from "@/lib/types";
 import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { apiFetch, ApiError } from "@/lib/api/client";
-import { requireAdmin } from "@/lib/auth/guards";
+import { requireAdmin, requireOwnerAdmin } from "@/lib/auth/guards";
 import { catalogTag, ordersTag } from "@/lib/cache-tags";
 
 function requestedItems(formData: FormData) {
@@ -113,4 +113,45 @@ export async function finalizeDraftInvoiceAction(draftId: string) {
   updateTag(ordersTag);
   revalidatePath("/"); revalidatePath("/store"); revalidatePath("/admin/invoices"); revalidatePath("/admin/orders"); revalidatePath("/admin/products");
   redirect(`/admin/walk-in-sale/${order.id}/receipt`);
+}
+
+/**
+ * Drafts and quotations carry no stock movement and no order, so deleting one
+ * just removes the document and its lines. A finalized invoice also takes the
+ * order it produced, returning that sale's stock unless it was dispatched.
+ */
+export async function deleteSalesDocumentAction(documentId: string) {
+  await requireOwnerAdmin("/admin/invoices");
+
+  let outcome: { hadOrder: boolean; stockRestored: boolean };
+
+  try {
+    outcome = await apiFetch<{ hadOrder: boolean; stockRestored: boolean }>(`/admin/draft-documents/${documentId}`, {
+      method: "DELETE"
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    console.error("Document delete failed", { status: error.status, message: error.message });
+    redirect(`/admin/invoices?error=${error.status === 404 ? "document-missing" : "document-delete"}`);
+  }
+
+  // Clearing a draft's lines releases the products it was holding, which is
+  // what blocks deleting a product, so the catalogue reads go too.
+  updateTag(catalogTag);
+  if (outcome.hadOrder) updateTag(ordersTag);
+  if (outcome.stockRestored) {
+    revalidatePath("/");
+    revalidatePath("/store");
+  }
+  revalidatePath("/admin/invoices");
+  revalidatePath("/admin/products");
+  revalidatePath("/admin/orders");
+  revalidatePath("/admin/orders/past");
+
+  const notice = !outcome.hadOrder
+    ? "document-deleted"
+    : outcome.stockRestored
+      ? "document-deleted-restored"
+      : "document-deleted-kept";
+  redirect(`/admin/invoices?notice=${notice}`);
 }

@@ -5,6 +5,7 @@ import { AdminSectionErrorBoundary } from "@/components/admin/admin-section-erro
 import { OrderTable } from "@/components/admin/order-table";
 import type { Order, PaymentStatus } from "@/lib/types";
 import { requireAdmin } from "@/lib/auth/guards";
+import { canManageCatalog } from "@/lib/auth/roles";
 import { apiFetch, toQueryString } from "@/lib/api/client";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,8 @@ export default async function PastOrdersPage({
 }: {
   searchParams?: Promise<{ q?: string; paymentStatus?: string; customerId?: string }>;
 }) {
-  await requireAdmin("/admin/orders/past");
+  const admin = await requireAdmin("/admin/orders/past");
+  const canDelete = canManageCatalog(admin.role);
   const params = await searchParams;
 
   return (
@@ -36,14 +38,14 @@ export default async function PastOrdersPage({
       </form>
       <AdminSectionErrorBoundary message="The past order list could not be loaded. This is a connection problem, not an empty list -- your orders are safe. Reload to try again.">
         <Suspense fallback={<p className="empty-state">Loading past orders...</p>}>
-          <PastOrders params={params} />
+          <PastOrders canDelete={canDelete} params={params} />
         </Suspense>
       </AdminSectionErrorBoundary>
     </AdminLayout>
   );
 }
 
-async function PastOrders({ params }: { params?: { q?: string; paymentStatus?: string; customerId?: string } }) {
+async function PastOrders({ canDelete, params }: { canDelete: boolean; params?: { q?: string; paymentStatus?: string; customerId?: string } }) {
   const terms = params?.q?.trim().split(/\s+/).filter(Boolean) ?? [];
   const orders = await apiFetch<Order[]>(`/admin/orders${toQueryString({
     q: terms.join(" "),
@@ -52,5 +54,5 @@ async function PastOrders({ params }: { params?: { q?: string; paymentStatus?: s
     paymentStatus: paymentStatuses.includes(params?.paymentStatus as PaymentStatus) ? params?.paymentStatus : undefined
   })}`);
 
-  return <OrderTable emptyMessage="No completed or cancelled orders yet." orders={orders} />;
+  return <OrderTable canDelete={canDelete} emptyMessage="No completed or cancelled orders yet." orders={orders} />;
 }

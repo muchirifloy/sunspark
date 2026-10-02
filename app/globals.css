@@ -6381,3 +6381,81 @@ a.dashboard-metric:hover { border-color: #c7d3e4; }
     flex: 1;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Confirm-before-delete controls
+   Used for orders, invoices and quotations. These read as destructive wherever
+   they land, and never inherit a neighbouring primary button's colour.
+   --------------------------------------------------------------------------- */
+.confirm-delete-form {
+  display: grid;
+}
+
+.danger-link,
+.table-actions button.danger-link {
+  border: 1px solid #fecaca;
+  border-radius: 5px;
+  background: #fff1f2;
+  color: #b91c1c;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 7px 11px;
+  text-align: center;
+}
+
+.danger-link:hover,
+.table-actions button.danger-link:hover {
+  border-color: #f87171;
+  background: #fee2e2;
+}
+
+/* `.order-admin-row button` paints every button in the row with the brand
+   colour, which would make deleting an order look like saving it. */
+.order-admin-row button.danger-link,
+.payment-row button.danger-link {
+  border: 1px solid #fecaca;
+  border-radius: 5px;
+  background: #fff1f2;
+  color: #b91c1c;
+  min-height: 32px;
+  font-size: 12px;
+}
+
+.order-admin-row button.danger-link:hover {
+  border-color: #f87171;
+  background: #fee2e2;
+}
+
+.receipt-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  /* The delete control is a <form>, so without this it stretches to the row
+     height and stands taller than the buttons beside it. */
+  align-items: center;
+}
+
+/* Matches .secondary-btn's box so it lines up with the buttons beside it,
+   which size themselves off min-height rather than padding. */
+.receipt-actions .danger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fff1f2;
+  color: #b91c1c;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.receipt-actions .danger-btn:hover {
+  border-color: #f87171;
+  background: #fee2e2;
+}
+
+.confirm-delete-form button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}

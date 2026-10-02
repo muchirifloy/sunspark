@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { ConfirmDeleteForm } from "@/components/admin/confirm-delete-form";
 import { OrderStatusControls } from "@/components/admin/order-status-controls";
-import { updateOrderAction } from "@/app/admin/orders/actions";
+import { deleteOrderAction, updateOrderAction } from "@/app/admin/orders/actions";
 import { formatMoney } from "@/lib/money";
 import type { Order } from "@/lib/types";
 
@@ -9,7 +10,7 @@ import type { Order } from "@/lib/types";
  * drift apart. The order number and the customer name are both links because
  * those are the two things an operator reads when scanning for a specific sale.
  */
-export function OrderTable({ emptyMessage, orders }: { emptyMessage: string; orders: Order[] }) {
+export function OrderTable({ canDelete = false, emptyMessage, orders }: { canDelete?: boolean; emptyMessage: string; orders: Order[] }) {
   return (
     <div className="admin-table">
       <div className="admin-table-row order-admin-heading">
@@ -22,6 +23,16 @@ export function OrderTable({ emptyMessage, orders }: { emptyMessage: string; ord
       </div>
       {orders.map((order) => {
         const orderHref = `/admin/walk-in-sale/${order.id}/receipt`;
+        // Stated up front, because this is the part an operator cannot undo and
+        // cannot see from the row itself.
+        const stockNote = order.status === "COMPLETED"
+          ? "Stock stays deducted: this order was already dispatched."
+          : "The stock it used will be returned to inventory.";
+        const confirmMessage = `Delete order ${order.orderNumber} for ${order.customerName}?
+
+${stockNote}
+
+The order, its items and its invoice record are removed for good. This cannot be undone.`;
 
         return (
           <div className="admin-table-row order-admin-row" key={order.id}>
@@ -39,6 +50,13 @@ export function OrderTable({ emptyMessage, orders }: { emptyMessage: string; ord
             <span>{formatMoney(order.totalCents)}</span>
             <OrderStatusControls
               action={updateOrderAction.bind(null, order.id)}
+              extraActions={canDelete ? (
+                <ConfirmDeleteForm
+                  action={deleteOrderAction.bind(null, order.id)}
+                  confirmMessage={confirmMessage}
+                  label="Delete order"
+                />
+              ) : null}
               initialPaymentStatus={order.paymentStatus}
               initialStatus={order.status}
               receiptHref={orderHref}
